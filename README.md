@@ -1,4 +1,4 @@
-## Multi-Agent Bot with FastMCP and Kubernetes (KinD)
+## Multi-Agent Bot with FastMCP
 
 An extensible and scalable multi-agent AI bot system leveraging LangChain, FastMCP, and deployed on a local Kubernetes cluster using KinD. This system now supports dynamic registration of Discord and Telegram bots based on API keys provided at agent creation.
 
@@ -34,9 +34,6 @@ An extensible and scalable multi-agent AI bot system leveraging LangChain, FastM
 - **Containerized Deployment**  
   Dockerized services for portability.  
 
-- **Local Kubernetes (KinD)**  
-  Simulate production-like environment locally for easy development and testing.  
-
 - **Persistent Storage**  
   RAG data stored in ChromaDB on Persistent Volume Claims (PVC).  
 
@@ -52,7 +49,6 @@ An extensible and scalable multi-agent AI bot system leveraging LangChain, FastM
 * **telegram-mcp**, **discord-mcp**: Manage individual bot clients for their respective platforms, dynamically starting and stopping them based on agent requirements. They also handle forwarding messages to bot-api with the correct bot context.
 
 **ChromaDB**: Vector store for RAG, ensuring knowledge persistence across restarts.
-**KinD**: Local Kubernetes cluster orchestrating all microservices.
 
 ---
 
@@ -87,8 +83,6 @@ An extensible and scalable multi-agent AI bot system leveraging LangChain, FastM
 
    * `GROQ_API_KEY`: For the LLM used by agents.
 
-   * `BOT_API_BASE_URL`: The URL where your MCP servers can reach your bot-api (e.g., `http://localhost:8000` for local development).
-
    > **Note:** Discord and Telegram bot tokens/API keys are provided when you create/update an agent via the bot-api's `/agents/create` or `/agents/update` endpoints, not directly in the `.env` for the bot-api itself. However, if you are running MCPs locally, they might still need some of these in their own `.env` files or passed via environment variables. For Kubernetes, these will be managed via `k8s/secrets.yaml`.
 
 3. **Install Dependencies**
@@ -104,22 +98,7 @@ An extensible and scalable multi-agent AI bot system leveraging LangChain, FastM
    ./scripts/build_images.sh
    ```
 
-5. **Update Kubernetes Manifests**
-
-   * Fill `k8s/secrets.yaml` with your actual sensitive API keys (e.g., Discord bot tokens, Telegram API credentials) that will be mounted as environment variables into the respective MCP pods.
-   * Fill `k8s/configmaps.yaml` with non-sensitive configuration values.
-
-6. **Deploy to KinD**
-
-   ```bash
-   chmod +x scripts/deploy_kind.sh
-   ./scripts/deploy_kind.sh
-   kubectl get pods -n multi-agent-bot
-   ```
-
-   Verify all pods are running.
-
-7. **Load RAG Data (if applicable)**
+5. **Load RAG Data (if applicable)**
 
    ```bash
    kubectl apply -f k8s/jobs/rag-data-loader-job.yaml
@@ -218,7 +197,13 @@ multi-agent-bot/
 ├── Dockerfile.fastmcp_core
 ├── Dockerfile.rag_data_loader
 ├── README.md
-├── bot
+├── api-auth/
+│       ├── Dockerfile 
+│       ├── README.md 
+│       ├── __init__.py
+│       ├── main.py 
+│       └── requirements.txt
+├── agent-api/
 │   ├── Dockerfile
 │   ├── __init__.py
 │   ├── api
@@ -239,37 +224,24 @@ multi-agent-bot/
 │   └── requirements.txt
 ├── common
 │   └── utils.py
-├── fastmcp_core_server.py
 ├── frontend
-│   ├── app.py
-│   ├── requirements.txt
-│   └── .streamlit/config.toml
-├── k8s
-│   ├── configmaps.yaml
-│   ├── deployments
-│   │   ├── bot-deploy.yaml
-│   │   ├── discord-mcp-deploy.yaml
-│   │   ├── fastmcp-core-deploy.yaml
-│   │   ├── finance-mcp-deploy.yaml
-│   │   ├── rag-mcp-deploy.yaml
-│   │   ├── telegram-mcp-deploy.yaml
-│   │   └── web-mcp-deploy.yaml
-│   ├── ingress
-│   │   └── bot-ingress.yaml
-│   ├── jobs
-│   │   └── rag-data-loader-job.yaml
-│   ├── kind-cluster.yaml
-│   ├── namespaces.yaml
-│   ├── persistentvolumeclaims
-│   │   └── rag-pvc.yaml
-│   └── services
-│       ├── bot-svc.yaml
-│       ├── discord-mcp-svc.yaml
-│       ├── fastmcp-core-svc.yaml
-│       ├── finance-mcp-svc.yaml
-│       ├── rag-mcp-svc.yaml
-│       ├── telegram-mcp-svc.yaml
-│       └── web-mcp-svc.yaml
+│   └── flutter-app/
+│       ├── android/
+│       ├── ios/
+│       ├── lib/
+│       │   ├── main.dart (new)
+│       │   ├── models/
+│       │   │   └── agent.dart (new)
+│       │   ├── pages/
+│       │   │   ├── agent_list_page.dart (new)
+│       │   │   ├── chat_page.dart (new)
+│       │   │   └── create_agent_page.dart (new)
+│       │   └── services/
+│       │       ├── api_client.dart (new)
+│       │       └── auth_service.dart (new)
+│       ├── pubspec.yaml (new)
+│       ├── ... (other Flutter files)
+│ 
 ├── mcp-servers
 │   ├── base-mcp
 │   │   ├── Dockerfile.base
@@ -292,18 +264,10 @@ multi-agent-bot/
 │   └── web-mcp
 │       ├── Dockerfile
 │       └── server.py
-├── rag_setup.py
-├── rag_verify.py
 ├── requirements.txt
 ├── scripts
-│   ├── build_images.sh
-│   ├── deploy_kind.sh
-│   ├── load_initial_rag_data.py
-│   ├── rag_data_loader_requirements.txt
-│   └── setup_webhooks.sh
-└── tests/
-    ├── test_mcp_servers.py
-    └── test_bot_agent.py
+│     └── setup_webhooks.sh
+
 ```
 
 ---
