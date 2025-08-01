@@ -31,3 +31,6 @@ langchain_ollama
 langchain_openai
 langchain_google_genai 
 langchain_anthropic
+
+##auth
+python-jose[cryptography]

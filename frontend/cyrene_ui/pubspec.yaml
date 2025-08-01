@@ -48,6 +48,10 @@ dev_dependencies:
   provider:
   http:
   shared_preferences:
+  flutter_form_builder:
+  font_awesome_flutter:
+  json_annotation:
+  cupertino_icons:
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

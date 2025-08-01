@@ -4,6 +4,8 @@ k8s/secrets.yaml
 
 .root_venv/
 
+agent/agent-api/default.character.json
+
 # Python
 ##########
 sentence_transformers_cache/
