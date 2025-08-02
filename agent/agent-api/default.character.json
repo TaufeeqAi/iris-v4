@@ -6,7 +6,7 @@
         "temperature": 0.7,
         "maxTokens": 16384,
         "secrets": {
-           "groq_api_key": "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"
+       
         },
         "voice": {
             "model": "en_US-hfc_female-medium"
