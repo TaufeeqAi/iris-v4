@@ -51,7 +51,8 @@ dev_dependencies:
   flutter_form_builder:
   font_awesome_flutter:
   json_annotation:
-  cupertino_icons:
+  file_picker:
+  jwt_decoder:
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

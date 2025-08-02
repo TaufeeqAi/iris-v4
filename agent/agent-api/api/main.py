@@ -13,7 +13,7 @@ from ..models.agent_config import AgentConfig, AgentSecrets, Settings
 from ..core.agent_manager import AgentManager
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from fastapi.middleware.cors import CORSMiddleware
-
+import os
 # --- Import the new authentication dependency ---
 from ..api.dependencies import get_current_user
 
@@ -38,6 +38,8 @@ class ReceiveDiscordMessageRequest(BaseModel):
 # --------- Determine Local or Cluster Mode ---------
 LOCAL_MODE = True
 logger.info(f"Running in LOCAL_MODE: {LOCAL_MODE}")
+
+logger.info(f"[DEBUG] JWT_SECRET_KEY:{os.getenv("JWT_SECRET_KEY")}")
 
 # Initialize AgentManager instance globally
 DB_PATH = "agents.db"

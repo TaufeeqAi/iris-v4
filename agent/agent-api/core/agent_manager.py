@@ -277,6 +277,7 @@ class AgentManager:
         agent_lore = agent_config.lore 
         agent_style = agent_config.style 
         agent_message_examples = agent_config.messageExamples 
+        logger.info(f"Received secrets: {agent_config.settings.secrets.model_dump_json(exclude_none=True)}")
 
         logger.info(f"Dynamically initializing agent '{agent_name}' (ID: {agent_id})...")
 

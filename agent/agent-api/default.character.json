@@ -1,12 +1,12 @@
 {
     "name": "Cyrene AI",
-    "modelProvider": "anthropic",
+    "modelProvider": "groq",
     "settings": {
-        "model": "claude-3-opus-20240229", 
+        "model": "moonshotai/kimi-k2-instruct", 
         "temperature": 0.7,
-        "maxTokens": 50000,
+        "maxTokens": 16384,
         "secrets": {
-           
+           "groq_api_key": "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"
         },
         "voice": {
             "model": "en_US-hfc_female-medium"

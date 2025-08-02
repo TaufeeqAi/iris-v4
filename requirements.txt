@@ -34,3 +34,9 @@ langchain_anthropic
 
 ##auth
 python-jose[cryptography]
+sqlalchemy
+psycopg2-binary
+alembic
+passlib[bcrypt]
+python-multipart
+email-validator
