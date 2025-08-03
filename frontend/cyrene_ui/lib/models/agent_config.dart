@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class AgentConfig {
   final String? id;
   final String name;
@@ -5,7 +7,9 @@ class AgentConfig {
   final String? system;
   final List<String>? bio;
   final List<String>? lore;
-  final List<String>? knowledge;
+  final List<String>? knowledgeAreas;
+  final List<dynamic>? messageExamples; // Changed to a single list of messages
+  final String? style; // Changed to a String
   final Map<String, dynamic> settings;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -17,12 +21,15 @@ class AgentConfig {
     this.system,
     this.bio,
     this.lore,
-    this.knowledge,
+    this.knowledgeAreas,
+    this.messageExamples,
+    this.style,
     required this.settings,
     this.createdAt,
     this.updatedAt,
   });
 
+  /// Factory constructor to create an AgentConfig from a JSON map.
   factory AgentConfig.fromJson(Map<String, dynamic> json) {
     return AgentConfig(
       id: json['id'],
@@ -31,9 +38,18 @@ class AgentConfig {
       system: json['system'],
       bio: json['bio'] != null ? List<String>.from(json['bio']) : null,
       lore: json['lore'] != null ? List<String>.from(json['lore']) : null,
-      knowledge: json['knowledge'] != null
-          ? List<String>.from(json['knowledge'])
+      knowledgeAreas: json['knowledgeAreas'] != null
+          ? List<String>.from(json['knowledgeAreas'])
           : null,
+      // Parse messageExamples as a simple list.
+      messageExamples: json['messageExamples'] != null
+          ? List<dynamic>.from(json['messageExamples'])
+          : null,
+      // The style is stored as a string, but the API may expect a map
+      // so this needs to be handled in the UI.
+      style: json['style'] is String
+          ? json['style'] as String
+          : jsonEncode(json['style']),
       settings: json['settings'] ?? {},
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'])
@@ -44,6 +60,7 @@ class AgentConfig {
     );
   }
 
+  /// Converts the AgentConfig instance to a JSON map.
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -52,13 +69,16 @@ class AgentConfig {
       'system': system,
       'bio': bio,
       'lore': lore,
-      'knowledge': knowledge,
+      'knowledgeAreas': knowledgeAreas,
+      'messageExamples': messageExamples,
+      'style': style,
       'settings': settings,
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };
   }
 
+  /// Creates a new AgentConfig instance with updated values.
   AgentConfig copyWith({
     String? id,
     String? name,
@@ -66,7 +86,9 @@ class AgentConfig {
     String? system,
     List<String>? bio,
     List<String>? lore,
-    List<String>? knowledge,
+    List<String>? knowledgeAreas,
+    List<dynamic>? messageExamples,
+    String? style,
     Map<String, dynamic>? settings,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -78,7 +100,9 @@ class AgentConfig {
       system: system ?? this.system,
       bio: bio ?? this.bio,
       lore: lore ?? this.lore,
-      knowledge: knowledge ?? this.knowledge,
+      knowledgeAreas: knowledgeAreas ?? this.knowledgeAreas,
+      messageExamples: messageExamples ?? this.messageExamples,
+      style: style ?? this.style,
       settings: settings ?? this.settings,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

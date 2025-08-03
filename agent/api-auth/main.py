@@ -7,7 +7,8 @@ from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from .database_auth import get_db, create_tables, User
+from ..db_core.core import get_db, create_tables
+from ..db_core.models.user import User
 from .models import UserCreate, UserInDB, Token, RefreshTokenRequest, UserUpdate
 from .auth import (
     authenticate_user, create_user, get_user_by_username, get_user_by_email,

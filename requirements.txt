@@ -35,6 +35,7 @@ langchain_anthropic
 ##auth
 python-jose[cryptography]
 sqlalchemy
+asyncpg
 psycopg2-binary
 alembic
 passlib[bcrypt]

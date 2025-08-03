@@ -1,19 +1,19 @@
 import logging
 import asyncio
 import os
-import json 
-import uuid 
+import json
+import uuid
 from typing import Any, Dict, Tuple, Optional, List
 from pydantic import Field, PrivateAttr
 
 from langchain.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-from ..models.agent_config import AgentConfig, AgentSecrets, Settings 
+from ..models.agent_config import AgentConfig, AgentSecrets, Settings, AgentTool, Tool
 from ..prompts import AGENT_SYSTEM_PROMPT
 from ..langgraph_agents.custom_tool_agent import create_custom_tool_agent
-from ..llm_factory import create_llm 
-from ..db.sqlite_manager import SQLiteManager
+from ..llm_factory import create_llm
+from ..db.postgres_manager import PostgresManager
 
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ def _load_default_agent_config_from_file() -> Optional[AgentConfig]:
         settings_data = config_data.get("settings", {})
         secrets_from_json = settings_data.get("secrets", {})
         logger.debug(f"[_load_default_agent_config_from_file] Raw secrets from JSON: {secrets_from_json}")
-        
+
         voice_settings = settings_data.get("voice", {})
 
         # --- SIMPLIFIED SECRET PARSING ---
@@ -59,21 +59,21 @@ def _load_default_agent_config_from_file() -> Optional[AgentConfig]:
             model=settings_data.get("model", "llama3-8b-8192"),
             temperature=settings_data.get("temperature", 0.7),
             maxTokens=settings_data.get("maxTokens", 15000),
-            secrets=agent_secrets_instance, 
+            secrets=agent_secrets_instance,
             voice=voice_settings if voice_settings else None
         )
 
         # Create AgentConfig instance
         default_agent_config = AgentConfig(
-            id=str(uuid.uuid4()), 
+            id=str(uuid.uuid4()),
             name=config_data.get("name", "DefaultBot"),
-            modelProvider=config_data.get("modelProvider", "groq"), 
-            settings=settings_instance, 
-            system=config_data.get("system", AGENT_SYSTEM_PROMPT), 
+            modelProvider=config_data.get("modelProvider", "groq"),
+            settings=settings_instance,
+            system=config_data.get("system", AGENT_SYSTEM_PROMPT),
             bio=config_data.get("bio", []),
             lore=config_data.get("lore", []),
-            knowledge=config_data.get("knowledge", []), 
-            messageExamples=config_data.get("messageExamples"), 
+            knowledge=config_data.get("knowledge", []),
+            messageExamples=config_data.get("messageExamples"),
             style=config_data.get("style")
         )
         logger.info(f"Successfully loaded default agent config from {DEFAULT_CHARACTER_CONFIG_PATH}")
@@ -116,11 +116,11 @@ class TelegramToolWrapper(BaseTool):
         self._wrapped_tool = wrapped_tool
 
     async def _arun(self, *args: Any, **kwargs: Any) -> Any:
-        all_kwargs = {**kwargs} 
+        all_kwargs = {**kwargs}
         all_kwargs['telegram_api_id'] = self.telegram_api_id
         all_kwargs['telegram_api_hash'] = self.telegram_api_hash
         all_kwargs['telegram_bot_token'] = self.telegram_bot_token
-        
+
         logger.debug(f"Invoking wrapped Telegram tool '{self.name}' with injected credentials. Final Args: {all_kwargs}")
         return await self._wrapped_tool.ainvoke(all_kwargs)
 
@@ -144,7 +144,7 @@ class DiscordToolWrapper(BaseTool):
             return_direct=wrapped_tool.return_direct,
             func=wrapped_tool.func,
             coroutine=wrapped_tool.coroutine,
-            bot_id=bot_id, 
+            bot_id=bot_id,
             **kwargs
         )
         self._wrapped_tool = wrapped_tool
@@ -152,8 +152,8 @@ class DiscordToolWrapper(BaseTool):
     async def _arun(self, *args: Any, **kwargs: Any) -> Any:
         """Asynchronously runs the wrapped tool, injecting the Discord bot_id."""
         all_kwargs = {**kwargs}
-        all_kwargs['bot_id'] = self.bot_id 
-        
+        all_kwargs['bot_id'] = self.bot_id
+
         logger.debug(f"Invoking wrapped Discord tool '{self.name}' with injected bot_id: {self.bot_id}. Final Args: {all_kwargs}")
         return await self._wrapped_tool.ainvoke(all_kwargs)
 
@@ -167,12 +167,15 @@ class AgentManager:
     This class encapsulates the _initialized_agents dictionary and provides methods
     to interact with it, as well as handle dynamic agent creation and shutdown.
     """
-    def __init__(self, db_path: str):
+    # FIX: The __init__ method is changed to accept the PostgresManager instance directly.
+    # The original was taking a path and creating its own manager, which conflicted
+    # with how it was being called in main.py.
+    def __init__(self, db_manager: PostgresManager):
         self._initialized_agents: Dict[str, Dict[str, Any]] = {}
-        self.db_manager = SQLiteManager(db_path) 
+        self.db_manager = db_manager
 
-    def add_initialized_agent(self, agent_id: str, agent_name: str, executor: Any, mcp_client: MultiServerMCPClient, 
-                             discord_bot_id: Optional[str] = None, telegram_bot_id: Optional[str] = None):
+    def add_initialized_agent(self, agent_id: str, agent_name: str, executor: Any, mcp_client: MultiServerMCPClient,
+                              discord_bot_id: Optional[str] = None, telegram_bot_id: Optional[str] = None):
         """Adds an initialized agent, its MCP client, and platform-specific bot IDs to the cache."""
         agent_info = {
             "name": agent_name,
@@ -183,7 +186,7 @@ class AgentManager:
             agent_info["discord_bot_id"] = discord_bot_id
         if telegram_bot_id:
             agent_info["telegram_bot_id"] = telegram_bot_id
-            
+
         self._initialized_agents[agent_id] = agent_info
         logger.info(f"Agent '{agent_name}' (ID: {agent_id}) and its MCP client added to cache. Discord Bot ID: {discord_bot_id}, Telegram Bot ID: {telegram_bot_id}")
 
@@ -210,7 +213,7 @@ class AgentManager:
             if mcp_client:
                 await mcp_client.close()
                 logger.info(f"MCP Client for agent {agent_id} closed.")
-            
+
             logger.info(f"Agent {agent_id} removed from cache.")
         else:
             logger.warning(f"Attempted to shut down agent {agent_id}, but it was not found in cache.")
@@ -224,27 +227,44 @@ class AgentManager:
 
         if not existing_configs:
             logger.info("No existing agent configurations found. Attempting to load default agent from file.")
-            default_agent_config = _load_default_agent_config_from_file() 
+            default_agent_config = _load_default_agent_config_from_file()
 
             if default_agent_config:
+                # --- FIX START ---
+                # Check if the default agent config has any tools and add a default if not.
+                if not default_agent_config.tools:
+                    logger.info("Default agent config has no tools. Adding 'google_search' as a default.")
+                    google_search_tool_id = str(uuid.uuid4())
+                    google_search_tool = AgentTool(
+                        tool_id=google_search_tool_id,
+                        is_enabled=True,
+                        tool_details=Tool(
+                            id=google_search_tool_id,
+                            name="google_search",
+                            description="A tool for performing a google search.",
+                            config={"parameters": {"query": {"type": "string", "description": "The search query."}}}
+                        )
+                    )
+                    default_agent_config.tools = [google_search_tool]
+                # --- FIX END ---
                 await self.db_manager.save_agent_config(default_agent_config)
                 logger.info(f"Default agent '{default_agent_config.name}' saved to DB with ID: {default_agent_config.id}.")
-                existing_configs = await self.db_manager.get_all_agent_configs() 
+                existing_configs = await self.db_manager.get_all_agent_configs()
             else:
                 logger.error("Could not load or create a default agent configuration. No agents will be initialized.")
-                return 
-            
+                return
+
         for config in existing_configs:
             try:
                 if not config.id:
-                    config.id = str(uuid.uuid4()) 
+                    config.id = str(uuid.uuid4())
                     logger.warning(f"Agent config for '{config.name}' has no ID. Generated new ID: {config.id}")
-                    await self.db_manager.update_agent_config(config) 
+                    await self.db_manager.update_agent_config(config)
 
                 executor, mcp_client, discord_bot_id, telegram_bot_id = \
                     await self.create_dynamic_agent_instance(config, local_mode)
-                
-                self.add_initialized_agent( 
+
+                self.add_initialized_agent(
                     config.id,
                     config.name,
                     executor,
@@ -256,7 +276,7 @@ class AgentManager:
                 logger.error(f"Failed to re-initialize agent '{config.name}' (ID: {config.id}): {e}", exc_info=True)
 
         logger.info(f"Finished initializing {len(self._initialized_agents)} agent(s).")
-            
+
     async def create_dynamic_agent_instance(self, agent_config: AgentConfig, local_mode: bool) -> Tuple[Any, MultiServerMCPClient, Optional[str], Optional[str]]:
         """
         Dynamically creates and initializes an agent instance based on AgentConfig.
@@ -269,14 +289,14 @@ class AgentManager:
         llm_model_name = agent_config.settings.model
         llm_temperature = agent_config.settings.temperature
         llm_max_tokens = agent_config.settings.maxTokens
-        llm_secrets = agent_config.settings.secrets 
+        llm_secrets = agent_config.settings.secrets
 
         agent_bio = agent_config.bio
-        agent_persona = agent_config.system 
-        agent_knowledge = agent_config.knowledge 
-        agent_lore = agent_config.lore 
-        agent_style = agent_config.style 
-        agent_message_examples = agent_config.messageExamples 
+        agent_persona = agent_config.system
+        agent_knowledge = agent_config.knowledge
+        agent_lore = agent_config.lore
+        agent_style = agent_config.style
+        agent_message_examples = agent_config.messageExamples
         logger.info(f"Received secrets: {agent_config.settings.secrets.model_dump_json(exclude_none=True)}")
 
         logger.info(f"Dynamically initializing agent '{agent_name}' (ID: {agent_id})...")
@@ -303,20 +323,20 @@ class AgentManager:
             logger.info(f"✅ Initialized LLM for agent '{agent_name}': Provider={llm_model_provider}, Model={llm_model_name}")
         except ValueError as e:
             logger.error(f"Failed to initialize LLM for agent '{agent_name}': {e}", exc_info=True)
-            raise 
+            raise
 
         # --- MCP Server Configuration (using Docker Compose service names for non-local) ---
         agent_mcp_config = {
-            "web_search": {"url": "http://localhost:9000/mcp/", "transport": "streamable_http"}, 
-            "finance": {"url": "http://localhost:9001/mcp/", "transport": "streamable_http"}, 
-            "rag": {"url": "http://localhost:9002/mcp/", "transport": "streamable_http"}, 
+            "web_search": {"url": "http://localhost:9000/mcp/", "transport": "streamable_http"},
+            "finance": {"url": "http://localhost:9001/mcp/", "transport": "streamable_http"},
+            "rag": {"url": "http://localhost:9002/mcp/", "transport": "streamable_http"},
         }
-        
+
         if not local_mode:
             # CORRECTED URLs for Docker Compose based on docker-compose.yml
             agent_mcp_config["web_search"]["url"] = "http://web-mcp:9000/mcp/"
-            agent_mcp_config["finance"]["url"] = "http://finance-mcp:9001/mcp/" 
-            agent_mcp_config["rag"]["url"] = "http://rag-mcp:9002/mcp/"       
+            agent_mcp_config["finance"]["url"] = "http://finance-mcp:9001/mcp/"
+            agent_mcp_config["rag"]["url"] = "http://rag-mcp:9002/mcp/"
             # Note: Discord and Telegram MCPs are only added if their secrets are provided
             # Their URLs will be set correctly below if they are enabled.
 
@@ -324,7 +344,7 @@ class AgentManager:
         discord_bot_id = None
         telegram_bot_id = None
 
-        discord_token = llm_secrets.discord_bot_token 
+        discord_token = llm_secrets.discord_bot_token
         discord_secrets_provided = bool(discord_token)
         if discord_secrets_provided:
             if local_mode:
@@ -336,13 +356,13 @@ class AgentManager:
         else:
             logger.info(f"Agent '{agent_name}' does not have Discord bot token. Discord tools will NOT be enabled.")
 
-        telegram_token = llm_secrets.telegram_bot_token 
-        telegram_api_id = llm_secrets.telegram_api_id 
+        telegram_token = llm_secrets.telegram_bot_token
+        telegram_api_id = llm_secrets.telegram_api_id
         telegram_api_hash = llm_secrets.telegram_api_hash
 
         telegram_secrets_provided = (
             telegram_token and
-            telegram_api_id is not None and 
+            telegram_api_id is not None and
             telegram_api_hash
         )
         if telegram_secrets_provided:
@@ -358,36 +378,36 @@ class AgentManager:
 
 
         mcp_client = MultiServerMCPClient(agent_mcp_config)
-        mcp_client.tools = {} 
+        mcp_client.tools = {}
 
         agent_tools_raw = []
         agent_tools_final = []
 
         logger.info(f"Attempting to load tools for agent '{agent_name}' from MCP servers: {list(agent_mcp_config.keys())}...")
-        
+
         # --- RETRY MECHANISM ---
-        max_attempts = 12 
-        base_delay = 2    
-        for attempt in range(1, max_attempts + 1): 
+        max_attempts = 12
+        base_delay = 2
+        for attempt in range(1, max_attempts + 1):
             try:
                 fetched_tools_list = await mcp_client.get_tools()
                 if fetched_tools_list:
                     agent_tools_raw = list(fetched_tools_list)
                     logger.info(f"Successfully fetched {len(agent_tools_raw)} raw tools on attempt {attempt}.")
-                    break 
+                    break
             except Exception as e:
                 logger.warning(f"Attempt {attempt}/{max_attempts} failed to fetch tools for agent '{agent_name}': {e}")
                 if attempt < max_attempts:
-                    delay = base_delay * (2 ** (attempt - 1)) 
+                    delay = base_delay * (2 ** (attempt - 1))
                     logger.info(f"Retrying in {delay} seconds...")
                     await asyncio.sleep(delay)
-                else: 
+                else:
                     logger.error(f"Failed to fetch tools for agent '{agent_name}' after {max_attempts} attempts. Configured MCP servers might be down or inaccessible.")
                     # Ensure mcp_client.tools is initialized even if tool fetching fails completely
                     if not hasattr(mcp_client, 'tools'):
                         mcp_client.tools = {}
-                    agent_tools_final = [] 
-                    raise 
+                    agent_tools_final = []
+                    raise
 
         if agent_tools_raw:
             if discord_secrets_provided:
@@ -399,23 +419,23 @@ class AgentManager:
                         logger.info(f"Successfully registered Discord bot for agent '{agent_name}'. Bot ID: {discord_bot_id}")
                     except Exception as e:
                         logger.error(f"Failed to register Discord bot for agent '{agent_name}': {e}", exc_info=True)
-                        discord_bot_id = None 
+                        discord_bot_id = None
                 else:
                     logger.warning(f"Agent '{agent_name}' has Discord token but 'register_discord_bot' tool not found. Discord tools will NOT be enabled.")
-                
-            for tool_item in agent_tools_raw: 
+
+            for tool_item in agent_tools_raw:
                 if telegram_secrets_provided and tool_item.name in ["send_message_telegram", "get_chat_history", "get_bot_id_telegram"]:
                     logger.debug(f"Wrapping Telegram tool '{tool_item.name}' for agent '{agent_name}'.")
                     try:
 
-                        telegram_api_id_int = int(telegram_api_id) if telegram_api_id is not None else 0 
-                    except (ValueError, TypeError): 
+                        telegram_api_id_int = int(telegram_api_id) if telegram_api_id is not None else 0
+                    except (ValueError, TypeError):
                         logger.error(f"Invalid or missing telegram_api_id for agent '{agent_name}': {telegram_api_id}. Skipping Telegram tool wrapping.")
                         # If conversion fails, don't wrap, just add the raw tool if it's not a bot tool
                         if tool_item.name not in ["send_message_telegram", "get_chat_history", "get_bot_id_telegram"]:
-                             agent_tools_final.append(tool_item)
-                             mcp_client.tools[tool_item.name] = tool_item
-                        continue 
+                                agent_tools_final.append(tool_item)
+                                mcp_client.tools[tool_item.name] = tool_item
+                        continue
 
                     wrapped_tool = TelegramToolWrapper(
                         wrapped_tool=tool_item,
@@ -424,8 +444,8 @@ class AgentManager:
                         telegram_bot_token=telegram_token
                     )
                     agent_tools_final.append(wrapped_tool)
-                    mcp_client.tools[wrapped_tool.name] = wrapped_tool 
-                
+                    mcp_client.tools[wrapped_tool.name] = wrapped_tool
+
                 elif discord_bot_id and tool_item.name in ["send_message", "get_channel_messages", "get_bot_id"]:
                     logger.debug(f"Wrapping Discord tool '{tool_item.name}' for agent '{agent_name}' with bot ID: {discord_bot_id}.")
                     wrapped_tool = DiscordToolWrapper(
@@ -434,7 +454,7 @@ class AgentManager:
                     )
                     agent_tools_final.append(wrapped_tool)
                     mcp_client.tools[wrapped_tool.name] = wrapped_tool
-                
+
                 else:
                     agent_tools_final.append(tool_item)
                     mcp_client.tools[tool_item.name] = tool_item
@@ -447,26 +467,26 @@ class AgentManager:
         logger.info(f"🔧 Loaded {len(agent_tools_final)} tools for agent '{agent_name}'. Tools found: {[t.name for t in agent_tools_final]}.")
         logger.info(f"Final number of tools obtained for agent '{agent_name}': {len(agent_tools_final)}")
 
-        system_prompt = AGENT_SYSTEM_PROMPT 
-        if agent_persona: 
+        system_prompt = AGENT_SYSTEM_PROMPT
+        if agent_persona:
             system_prompt = f"{system_prompt}\n\nYour persona: {agent_persona}"
-        if agent_bio: 
+        if agent_bio:
             system_prompt = f"{system_prompt}\n\nYour bio: {'\n'.join(agent_bio)}"
-        if agent_knowledge: 
-            system_prompt = f"{system_prompt}\n\nKnowledge: {'\n'.join(agent_knowledge)}" 
-        if agent_lore: 
-            system_prompt = f"{system_prompt}\n\nLore: {'\n'.join(agent_lore)}" 
+        if agent_knowledge:
+            system_prompt = f"{system_prompt}\n\nKnowledge: {'\n'.join(agent_knowledge)}"
+        if agent_lore:
+            system_prompt = f"{system_prompt}\n\nLore: {'\n'.join(agent_lore)}"
         if agent_style:
             style_str = json.dumps(agent_style, indent=2) if isinstance(agent_style, dict) else str(agent_style)
-            system_prompt = f"{system_prompt}\n\nStyle: {style_str}" 
+            system_prompt = f"{system_prompt}\n\nStyle: {style_str}"
         if agent_message_examples:
             examples_str = json.dumps(agent_message_examples, indent=2)
-            system_prompt = f"{system_prompt}\n\nMessage Examples:\n{examples_str}" 
+            system_prompt = f"{system_prompt}\n\nMessage Examples:\n{examples_str}"
 
-        logger.info(f"Using AGENT_SYSTEM_PROMPT for agent '{agent_name}'.") 
+        logger.info(f"Using AGENT_SYSTEM_PROMPT for agent '{agent_name}'.")
 
         agent_executor = await create_custom_tool_agent(llm, agent_tools_final, system_prompt, agent_name)
 
         logger.info(f"🧠 Agent: {agent_name} (ID: {agent_id}) initialized as a custom LangGraph agent with {len(agent_tools_final)} tools.")
-        
+
         return agent_executor, mcp_client, discord_bot_id, telegram_bot_id

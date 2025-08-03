@@ -1,3 +1,5 @@
+// create_agent_screen.dart
+import 'dart:math';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -55,39 +57,41 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
       'Claude 3 Haiku',
       'Claude 3 Sonnet',
       'Claude 3 Opus',
-      'claude‑4‑opus',
-      'claude‑4‑sonnet',
+      'claude-4-opus',
+      'claude-4-sonnet',
     ],
     'groq': [
-      'moonshotai/kimi‑k2‑instruct',
-      'meta‑llama/llama‑4‑scout‑17b‑16e‑instruct',
-      'meta‑llama/llama‑4‑maverick‑17b‑128e‑instruct',
-      'meta‑llama/llama‑guard‑4‑12b‑instruct',
-      'gemma‑2‑9b‑it', // Google model on GroqCloud
+      'moonshotai/kimi-k2-instruct',
+      'meta-llama/llama-4-scout-17b-16e-instruct',
+      'meta-llama/llama-4-maverick-17b-128e-instruct',
+      'meta-llama/llama-guard-4-12b-instruct',
+      'gemma-2-9b-it', // Google model on GroqCloud
     ],
-    'google': ['gemini‑1.5‑pro', 'gemini‑2.5‑flash', 'gemini‑2.5‑pro'],
+    'google': ['gemini-1.5-pro', 'gemini-2.5-flash', 'gemini-2.5-pro'],
   };
 
   final Map<String, int> _modelMaxTokenLimits = {
-    'gpt-3.5‑turbo': 4096,
-    'gpt‑3.5‑turbo‑16k': 16384,
-    'gpt‑4': 8192,
-    'gpt‑4‑32k': 32768,
-    'gpt‑4‑turbo': 131072, // Turbo supports 128K
-    'gpt‑4.1': 1000000, // GPT‑4.1 supports ~1M tokens
+    'gpt-3.5-turbo': 4096,
+    'gpt-3.5-turbo-16k': 16384,
+    'gpt-4': 8192,
+    'gpt-4-32k': 32768,
+    'gpt-4-turbo': 131072, // Turbo supports 128K
+    'gpt-4.1': 1000000, // GPT-4.1 supports ~1M tokens
 
-    'Claude 3 Haiku': 200000, 'Claude 3 Sonnet': 200000,
+    'Claude 3 Haiku': 200000,
+    'Claude 3 Sonnet': 200000,
     'Claude 3 Opus': 200000,
-    'claude‑4‑opus': 200000, 'claude‑4‑sonnet': 200000,
-    'moonshotai/kimi‑k2‑instruct': 131072,
-    'meta‑llama/llama‑4‑scout‑17b‑16e‑instruct': 131072,
-    'meta‑llama/llama‑4‑maverick‑17b‑128e‑instruct': 131072, // preview capacity
-    'meta‑llama/llama‑guard‑4‑12b‑instruct': 131072,
-    'gemma‑2‑9b‑it': 8192,
+    'claude-4-opus': 200000,
+    'claude-4-sonnet': 200000,
+    'moonshotai/kimi-k2-instruct': 131072,
+    'meta-llama/llama-4-scout-17b-16e-instruct': 131072,
+    'meta-llama/llama-4-maverick-17b-128e-instruct': 131072, // preview capacity
+    'meta-llama/llama-guard-4-12b-instruct': 131072,
+    'gemma-2-9b-it': 8192,
 
-    'gemini‑1.5‑pro': 1_048_576,
-    'gemini‑2.5‑flash': 1_048_576,
-    'gemini‑2.5‑pro': 1_048_576,
+    'gemini-1.5-pro': 1048576,
+    'gemini-2.5-flash': 1048576,
+    'gemini-2.5-pro': 1048576,
   };
 
   final Map<String, int> _modelMaxOutputLimits = {
@@ -96,7 +100,7 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
     'gpt-4': 8192,
     'gpt-4-32k': 32768,
     'gpt-4-turbo': 131072,
-    'gpt-4.1': 1_000_000,
+    'gpt-4.1': 1000000,
 
     'claude-4-opus': 32768,
     'claude-4-sonnet': 65536,
@@ -185,6 +189,9 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
     }
   }
 
+  int get currentModelMaxTokens =>
+      _modelMaxTokenLimits[_llmModel] ?? AppConfig.defaultMaxTokens;
+
   /// Creates an agent from the data entered in the form.
   Future<void> _createAgentFromForm() async {
     if (!_formKey.currentState!.validate()) return;
@@ -192,8 +199,9 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
     try {
       print('🔍 Parsing secrets...');
       final secrets = _secretsController.text.isNotEmpty
-          ? json.decode(_secretsController.text)
+          ? json.decode(_secretsController.text) as Map<String, dynamic>
           : {};
+
       // 🔧 Normalize telegram_api_id
       if (secrets.containsKey('telegram_api_id')) {
         final apiId = secrets['telegram_api_id'];
@@ -223,14 +231,53 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
         }
       }
 
-      print('🔍 Parsing messageExamples...');
-      final messageExamples = _messageExamplesController.text.isNotEmpty
-          ? json.decode(_messageExamplesController.text)
-          : [];
-      print('🔍 Parsing style...');
-      final style = _styleController.text.isNotEmpty
-          ? json.decode(_styleController.text)
-          : {};
+      // --- FIX: messageExamples should be List[Dict] (flat list, not nested) ---
+      print('🔍 Parsing and converting messageExamples...');
+      List<dynamic> messageExamples = [];
+      if (_messageExamplesController.text.isNotEmpty) {
+        final rawExamples =
+            json.decode(_messageExamplesController.text) as List<dynamic>;
+
+        // Convert each message to the format: Dict (not wrapped in a list)
+        messageExamples = rawExamples.map((item) {
+          if (item is Map<String, dynamic>) {
+            String content = item['content'] ?? '';
+
+            // If content is a JSON string with "text" field, extract it
+            if (content.startsWith('{') && content.contains('"text"')) {
+              try {
+                final contentObj = json.decode(content) as Map<String, dynamic>;
+                content = contentObj['text'] ?? content;
+              } catch (e) {
+                // If parsing fails, use the original content
+              }
+            }
+
+            // Return as a simple dictionary (matching what API validation expects)
+            return {'user': item['user'] ?? '', 'content': content};
+          }
+          return item;
+        }).toList();
+      }
+
+      // --- FIX: `style` should be parsed as JSON object, not kept as string ---
+      print('🔍 Validating style JSON string...');
+      String? styleString;
+      if (_styleController.text.isNotEmpty) {
+        try {
+          // Validate that it's valid JSON, but keep it as a string (API expects string)
+          json.decode(_styleController.text);
+          styleString = _styleController.text;
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Invalid JSON for Style field: $e'),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+          return;
+        }
+      }
 
       final agentData = {
         'name': _nameController.text,
@@ -244,14 +291,16 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
         'lore': _loreController.text.isEmpty
             ? null
             : _loreController.text.split(',').map((e) => e.trim()).toList(),
-        'knowledgeAreas': _knowledgeAreasController.text.isEmpty
+        'knowledge': _knowledgeAreasController.text.isEmpty
             ? null
             : _knowledgeAreasController.text
                   .split(',')
                   .map((e) => e.trim())
                   .toList(),
-        'messageExamples': messageExamples,
-        'style': style,
+        'messageExamples': messageExamples.isEmpty
+            ? null
+            : messageExamples, // ✅ Flat list
+        'style': styleString, // ✅ Send as parsed JSON object (not string)
         'settings': {
           'model': _llmModel,
           'temperature': _temperature,
@@ -259,7 +308,16 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
           'secrets': secrets,
         },
       };
-      print('📦 Final agent payload:\n${jsonEncode(agentData)}');
+
+      print('📦 Final agent payload (truncated):');
+      // Truncate the output for better readability in the console.
+      final payloadJson = jsonEncode(agentData);
+      print(
+        payloadJson.length > 200
+            ? payloadJson.substring(0, 200) + '...'
+            : payloadJson,
+      );
+
       await _createAgent(agentData);
     } catch (e) {
       print('❌ Error while parsing JSON: $e');
@@ -315,13 +373,51 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
       _loreController.text =
           (agentConfig['lore'] as List<dynamic>?)?.join(', ') ?? '';
       _knowledgeAreasController.text =
-          (agentConfig['knowledgeAreas'] as List<dynamic>?)?.join(', ') ?? '';
-      _messageExamplesController.text = agentConfig['messageExamples'] != null
-          ? json.encode(agentConfig['messageExamples'])
-          : '';
-      _styleController.text = agentConfig['style'] != null
-          ? json.encode(agentConfig['style'])
-          : '';
+          (agentConfig['knowledge'] as List<dynamic>?)?.join(', ') ??
+          ''; // Changed from 'knowledgeAreas' to 'knowledge'
+
+      final messageExamplesFromConfig = agentConfig['messageExamples'];
+      if (messageExamplesFromConfig != null &&
+          messageExamplesFromConfig is List) {
+        // Handle both nested and flat messageExamples format from file
+        final List<dynamic> flattenedForDisplay = [];
+        for (var item in messageExamplesFromConfig) {
+          if (item is List) {
+            flattenedForDisplay.addAll(item);
+          } else if (item is Map<String, dynamic>) {
+            flattenedForDisplay.add(item);
+          }
+        }
+
+        // Correct the content format to be a simple string for the UI
+        final List<dynamic> messagesWithUserKey = flattenedForDisplay.map((
+          message,
+        ) {
+          if (message is Map<String, dynamic> &&
+              message.containsKey('content')) {
+            // Ensure content is a string for display
+            if (message['content'] is! String) {
+              message['content'] = json.encode(message['content']);
+            }
+          }
+          return message;
+        }).toList();
+
+        _messageExamplesController.text = json.encode(messagesWithUserKey);
+      } else {
+        _messageExamplesController.text = '';
+      }
+
+      final styleFromConfig = agentConfig['style'];
+      if (styleFromConfig != null) {
+        // Style is likely a JSON object, so encode it to a string for the text field
+        _styleController.text = styleFromConfig is String
+            ? styleFromConfig
+            : json.encode(styleFromConfig);
+      } else {
+        _styleController.text = '';
+      }
+
       print('📝 Populated form fields');
 
       final settings = agentConfig['settings'] as Map<String, dynamic>?;
@@ -346,17 +442,18 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
                 : AppConfig.defaultModel;
           }
 
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Model "$loadedModel" not found for provider $_selectedProvider.\n'
-                  'Defaulting to $_llmModel.',
+          if (!availableModels.contains(loadedModel)) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Model "$loadedModel" not found for provider $_selectedProvider. Defaulting to $_llmModel.',
+                  ),
+                  backgroundColor: Theme.of(context).colorScheme.error,
                 ),
-                backgroundColor: Theme.of(context).colorScheme.error,
-              ),
-            );
-          });
+              );
+            });
+          }
 
           _temperature =
               (settings['temperature'] as num?)?.toDouble() ??
@@ -518,7 +615,7 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
               label: 'Message Examples (JSON Array)',
               prefixIcon: Icons.message,
               maxLines: 6,
-              hintText: '[{"user": "[user1]", "content": "hello"}]',
+              hintText: 'e.g., [{"user": "user1", "content": "hello"}]',
               validator: (value) {
                 if (value == null || value.isEmpty) return null;
                 try {
@@ -532,11 +629,11 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
             const SizedBox(height: 16),
             CustomTextField(
               controller: _styleController,
-              label: 'Style (JSON Object)',
+              label: 'Style (JSON String)',
               prefixIcon: Icons.brush,
               maxLines: 4,
               hintText:
-                  '{"all": ["Speaks in a friendly tone.", "Uses simple language."]}',
+                  'e.g., {"all": ["Speaks in a friendly tone.", "Uses simple language."]}',
               validator: (value) {
                 if (value == null || value.isEmpty) return null;
                 try {
@@ -583,7 +680,6 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
                 });
               },
             ),
-
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               value:
@@ -601,16 +697,16 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
                         DropdownMenuItem(value: model, child: Text(model)),
                   )
                   .toList(),
-              onChanged: (value) {
+              onChanged: (newModel) {
                 setState(() {
-                  _llmModel = value!;
+                  _llmModel = newModel!;
                   _maxTokens =
                       _modelMaxTokenLimits[_llmModel] ??
                       AppConfig.defaultMaxTokens;
+                  _maxTokens = min(_maxTokens, currentModelMaxTokens);
                 });
               },
             ),
-
             const SizedBox(height: 16),
             CustomTextField(
               controller: _secretsController,

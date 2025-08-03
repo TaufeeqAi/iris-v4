@@ -4,7 +4,7 @@ from typing import Optional, Union
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
-from .database_auth import User
+from ..db_core.models.user import User
 from .models import UserCreate, TokenData
 import base64
 
