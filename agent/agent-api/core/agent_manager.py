@@ -205,6 +205,14 @@ class AgentManager:
             await self.shutdown_specific_agent(agent_id)
         logger.info("All agents shut down and cache cleared.")
 
+    async def close(self):
+        """
+        Shuts down all initialized agents and their associated resources,
+        providing a single, unified method for graceful shutdown.
+        This method is an alias for `shutdown_all_agents`.
+        """
+        await self.shutdown_all_agents()
+
     async def shutdown_specific_agent(self, agent_id: str):
         """Shuts down a specific agent and removes it from the cache."""
         agent_info = self._initialized_agents.pop(agent_id, None)

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:cyrene_ui/models/tool_model.dart';
+
 class AgentConfig {
   final String? id;
   final String name;
@@ -13,6 +15,7 @@ class AgentConfig {
   final Map<String, dynamic> settings;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  List<AgentTool>? tools;
 
   AgentConfig({
     this.id,
@@ -27,6 +30,7 @@ class AgentConfig {
     required this.settings,
     this.createdAt,
     this.updatedAt,
+    this.tools,
   });
 
   /// Factory constructor to create an AgentConfig from a JSON map.
@@ -45,8 +49,6 @@ class AgentConfig {
       messageExamples: json['messageExamples'] != null
           ? List<dynamic>.from(json['messageExamples'])
           : null,
-      // The style is stored as a string, but the API may expect a map
-      // so this needs to be handled in the UI.
       style: json['style'] is String
           ? json['style'] as String
           : jsonEncode(json['style']),
@@ -56,6 +58,11 @@ class AgentConfig {
           : null,
       updatedAt: json['updatedAt'] != null
           ? DateTime.parse(json['updatedAt'])
+          : null,
+      tools: json['tools'] != null
+          ? List<AgentTool>.from(
+              json['tools'].map((t) => AgentTool.fromJson(t)),
+            )
           : null,
     );
   }
@@ -75,6 +82,7 @@ class AgentConfig {
       'settings': settings,
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
+      'tools': tools?.map((t) => t.toJson()).toList(),
     };
   }
 

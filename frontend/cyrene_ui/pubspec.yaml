@@ -53,6 +53,9 @@ dev_dependencies:
   json_annotation:
   file_picker:
   jwt_decoder:
+  fluttertoast:
+  web_socket_channel:
+  flutter_sound:
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

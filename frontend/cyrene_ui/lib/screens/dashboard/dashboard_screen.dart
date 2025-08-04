@@ -30,6 +30,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadDashboardData() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
     });
@@ -44,6 +45,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // Handle error
       debugPrint('Error loading dashboard data: $e');
     } finally {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });

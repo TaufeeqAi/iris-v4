@@ -1,4 +1,5 @@
 // screens/register_screen.dart
+import 'package:cyrene_ui/screens/main_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../config/app_config.dart';
@@ -85,6 +86,14 @@ class _RegisterScreenState extends State<RegisterationScreen>
             ? _fullNameController.text.trim()
             : null,
       );
+      if (!mounted) return;
+
+      final authService = Provider.of<AuthService>(context, listen: false);
+      if (authService.isAuthenticated) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => MainScreen()),
+        );
+      }
     } catch (e) {
       setState(() {
         _errorMessage = e.toString().replaceAll('Exception: ', '');

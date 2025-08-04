@@ -1,4 +1,4 @@
-import json
+import json, uuid
 import logging
 from typing import List, Dict, Any, Optional
 
@@ -179,7 +179,7 @@ class PostgresManager:
             record = await conn.fetchrow("""
                 SELECT
                     a.id,
-                    a.user_id,
+                    a.user_id, 
                     a.name,
                     a.model_provider,
                     a.settings,
@@ -308,3 +308,89 @@ class PostgresManager:
         async with self.pool.acquire() as conn:
             await conn.execute("DELETE FROM agents WHERE id = $1", agent_id)
             logger.info(f"Agent {agent_id} and its tool associations deleted.")
+
+## Tool specific crud
+    async def upsert_tool(self, tool: Tool) -> str:
+        async with self.pool.acquire() as conn:
+            tool_id = await conn.fetchval("""
+                INSERT INTO tools (id, name, description, config)
+                VALUES ($1, $2, $3, $4::jsonb)
+                ON CONFLICT (name) DO UPDATE SET
+                    description = EXCLUDED.description,
+                    config = EXCLUDED.config
+                RETURNING id;
+            """, tool.id or str(uuid.uuid4()), tool.name, tool.description, json.dumps(tool.config))
+            return tool_id
+
+    async def get_tool_by_id(self, tool_id: str) -> Optional[Tool]:
+        async with self.pool.acquire() as conn:
+            record = await conn.fetchrow("SELECT * FROM tools WHERE id = $1", tool_id)
+            if record:
+                return Tool(**dict(record))
+        return None
+
+    async def get_all_tool_metadata(self) -> List[Tool]:
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch("SELECT * FROM tools")
+            return [Tool(**dict(r)) for r in records]
+
+    async def delete_tool(self, tool_id: str):
+        async with self.pool.acquire() as conn:
+            await conn.execute("DELETE FROM tools WHERE id = $1", tool_id)
+
+##AgentTool Crud
+
+    ## Add tool to agent
+    async def add_tool_to_agent(self, agent_id: str, tool_id: str, is_enabled: bool = True):
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO agent_tool_association (agent_id, tool_id, is_enabled)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (agent_id, tool_id) DO UPDATE SET is_enabled = EXCLUDED.is_enabled;
+            """, agent_id, tool_id, is_enabled)
+
+    ## delete a tool from agent
+    async def remove_tool_from_agent(self, agent_id: str, tool_id: str):
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                DELETE FROM agent_tool_association
+                WHERE agent_id = $1 AND tool_id = $2
+            """, agent_id, tool_id)
+
+    ## get tools of a agent
+    async def get_tools_for_agent(self, agent_id: str) -> List[AgentTool]:
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch("""
+                SELECT
+                    ata.is_enabled,
+                    t.id AS tool_id,
+                    t.name,
+                    t.description,
+                    t.config
+                FROM agent_tool_association ata
+                JOIN tools t ON ata.tool_id = t.id
+                WHERE ata.agent_id = $1
+            """, agent_id)
+
+            tools = []
+            for record in records:
+                tools.append(AgentTool(
+                    tool_id=record["tool_id"],
+                    is_enabled=record["is_enabled"],
+                    tool_details=Tool(
+                        id=record["tool_id"],
+                        name=record["name"],
+                        description=record["description"],
+                        config=record["config"]
+                    )
+                ))
+            return tools
+
+    ##enable tool for a agent
+    async def update_tool_enabled_status(self, agent_id: str, tool_id: str, is_enabled: bool):
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE agent_tool_association
+                SET is_enabled = $3
+                WHERE agent_id = $1 AND tool_id = $2
+            """, agent_id, tool_id, is_enabled)

@@ -1,10 +1,10 @@
 // screens/profile_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../services/auth_service.dart';
-import '../../widgets/common/custom_text_field.dart';
-import '../../widgets/common/gradient_button.dart';
-import '../../widgets/common/error_message.dart';
+import '../../../services/auth_service.dart';
+import '../../../widgets/common/custom_text_field.dart';
+import '../../../widgets/common/gradient_button.dart';
+import '../../../widgets/common/error_message.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});

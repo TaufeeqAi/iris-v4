@@ -1,5 +1,6 @@
 // lib/screens/agents/agent_list_screen.dart
-
+import 'package:cyrene_ui/config/app_config.dart';
+import 'package:cyrene_ui/screens/agents/agent_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
@@ -111,6 +112,11 @@ class _AgentListScreenState extends State<AgentListScreen> {
   }
 
   Future<void> _deleteAgent(AgentConfig agent) async {
+    if (agent.name.toLowerCase() == 'cyrene') {
+      _showErrorSnackBar("The default Cyrene agent cannot be deleted.");
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -136,7 +142,7 @@ class _AgentListScreenState extends State<AgentListScreen> {
         final apiService = ApiService(authService.token!);
 
         await apiService.deleteAgent(agent.id!);
-        _loadAgents(); // Refresh the list
+        await _loadAgents(); // Refresh the list
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Agent deleted successfully')),
@@ -234,10 +240,17 @@ class _AgentListScreenState extends State<AgentListScreen> {
         final agent = _filteredAgents[index];
         return AgentCard(
           agent: agent,
-          onTap: () => widget.onAgentSelected(agent.id!, agent.name),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AgentDetailScreen(agent: agent),
+              ),
+            );
+          },
           onDelete: () => _deleteAgent(agent),
           onEdit: () {
-            // TODO: Navigate to edit agent
+            Navigator.pushNamed(context, Routes.editAgent);
           },
         );
       },

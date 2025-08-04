@@ -41,3 +41,4 @@ alembic
 passlib[bcrypt]
 python-multipart
 email-validator
+sqlalchemy[asyncio]

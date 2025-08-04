@@ -1,3 +1,10 @@
+import 'package:cyrene_ui/models/agent_config.dart';
+import 'package:cyrene_ui/screens/agents/agent_detail_screen.dart';
+import 'package:cyrene_ui/screens/agents/edit_agent_screen.dart';
+import 'package:cyrene_ui/screens/auth/register_screen.dart';
+import 'package:cyrene_ui/screens/auth/verify_email_screen.dart';
+import 'package:cyrene_ui/screens/profile/profile_screen.dart';
+import 'package:cyrene_ui/screens/settings/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'config/app_config.dart';
@@ -17,14 +24,55 @@ class CyreneApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
-      providers: [ChangeNotifierProvider(create: (_) => AuthService())],
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthService()),
+        ChangeNotifierProvider(create: (_) => AuthService()),
+      ],
       child: MaterialApp(
         title: AppConfig.appName,
         theme: ThemeConfig.lightTheme,
         darkTheme: ThemeConfig.darkTheme,
         themeMode: ThemeMode.system,
         debugShowCheckedModeBanner: false,
-        home: const AppInitializer(),
+        initialRoute: '/',
+        onGenerateRoute: (settings) {
+          switch (settings.name) {
+            case '/':
+              return MaterialPageRoute(builder: (_) => const AppInitializer());
+            case Routes.login:
+              return MaterialPageRoute(builder: (_) => const LoginScreen());
+            case Routes.main:
+              return MaterialPageRoute(builder: (_) => const MainScreen());
+            case Routes.profile:
+              return MaterialPageRoute(builder: (_) => const ProfileScreen());
+            case Routes.settings:
+              return MaterialPageRoute(builder: (_) => const SettingsScreen());
+            case Routes.editAgent:
+              final agentId = settings.arguments as String;
+              return MaterialPageRoute(
+                builder: (_) => EditAgentScreen(agentId: agentId),
+              );
+            case Routes.agentDetails:
+              final agent = settings.arguments as AgentConfig;
+              return MaterialPageRoute(
+                builder: (_) => AgentDetailScreen(agent: agent),
+              );
+            case Routes.register:
+              return MaterialPageRoute(
+                builder: (_) => const RegisterationScreen(),
+              );
+            case Routes.verifyEmail:
+              final email = settings.arguments as String;
+              return MaterialPageRoute(
+                builder: (_) => VerifyEmailScreen(email: email),
+              );
+            default:
+              return MaterialPageRoute(
+                builder: (_) =>
+                    const Scaffold(body: Center(child: Text('Page not found'))),
+              );
+          }
+        },
       ),
     );
   }

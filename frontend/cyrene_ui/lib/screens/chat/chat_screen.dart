@@ -11,8 +11,14 @@ import '../../widgets/common/empty_state.dart';
 class ChatScreen extends StatefulWidget {
   final String? agentId;
   final String? agentName;
+  final bool? showAllHistory;
 
-  const ChatScreen({super.key, this.agentId, this.agentName});
+  const ChatScreen({
+    super.key,
+    this.agentId,
+    this.agentName,
+    this.showAllHistory,
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();

@@ -1,3 +1,5 @@
+import 'package:cyrene_ui/screens/profile/profile_screen.dart';
+import 'package:cyrene_ui/services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
@@ -7,6 +9,8 @@ import 'agents/create_agent_screen.dart';
 import 'chat/chat_screen.dart';
 import 'dashboard/dashboard_screen.dart';
 import '../widgets/common/custom_drawer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'settings/settings_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -43,14 +47,48 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       label: 'Chat',
     ),
   ];
+  Future<void> _initializeDefaultAgent() async {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final apiService = ApiService(authService.token!);
+    final agents = await apiService.getAgents();
+
+    if (agents.isEmpty) {
+      // No agents at all — nothing to select
+      return;
+    }
+
+    // Pick “Cyrene” if it exists, otherwise just the first one
+    final defaultAgent = agents.firstWhere(
+      (a) => a.name.toLowerCase() == 'cyrene',
+      orElse: () => agents.first,
+    );
+
+    setState(() {
+      _selectedAgentId = defaultAgent.id;
+      _selectedAgentName = defaultAgent.name;
+    });
+  }
+
+  void _loadLastTabIndex() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedIndex = prefs.getInt('last_tab_index') ?? 0;
+    setState(() {
+      _selectedIndex = savedIndex;
+      _tabController.index = savedIndex;
+    });
+  }
 
   @override
   void initState() {
     super.initState();
+    _loadLastTabIndex();
+    _loadLastTabIndex();
+
     _tabController = TabController(
       length: _navigationItems.length,
       vsync: this,
     );
+    _initializeDefaultAgent();
   }
 
   @override
@@ -68,11 +106,14 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     });
   }
 
-  void _onNavigationTapped(int index) {
+  void _onNavigationTapped(int index) async {
     if (index == 3 && _selectedAgentId == null) {
       _showSelectAgentDialog();
       return;
     }
+
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setInt('last_tab_index', index);
 
     setState(() {
       _selectedIndex = index;
@@ -122,6 +163,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                       ChatScreen(
                         agentId: _selectedAgentId,
                         agentName: _selectedAgentName,
+                        showAllHistory: true,
                       ),
                     ],
                   ),
@@ -304,16 +346,23 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               ),
             ),
           ],
-          onSelected: (value) {
+          onSelected: (value) async {
             switch (value) {
               case 'profile':
-                // TODO: Navigate to profile
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                );
                 break;
               case 'settings':
-                // TODO: Navigate to settings
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                );
                 break;
               case 'logout':
-                auth.logout();
+                await auth.logout();
+                if (context.mounted) {
+                  Navigator.of(context).pushReplacementNamed(Routes.login);
+                }
                 break;
             }
           },

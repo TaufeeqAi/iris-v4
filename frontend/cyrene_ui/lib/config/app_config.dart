@@ -26,3 +26,15 @@ class AppConfig {
   static const EdgeInsets defaultPadding = EdgeInsets.all(16.0);
   static const EdgeInsets screenPadding = EdgeInsets.all(24.0);
 }
+
+// Route Names
+class Routes {
+  static const String login = '/login';
+  static const String main = '/main';
+  static const String profile = '/profile';
+  static const String settings = '/settings';
+  static const String register = '/register';
+  static const String verifyEmail = '/verify-email';
+  static const String editAgent = '/edit-agent';
+  static const String agentDetails = '/agent-details';
+}

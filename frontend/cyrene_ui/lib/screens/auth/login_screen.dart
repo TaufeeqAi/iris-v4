@@ -6,6 +6,7 @@ import '../../services/auth_service.dart';
 import '../../widgets/common/custom_text_field.dart';
 import '../../widgets/common/gradient_button.dart';
 import '../../widgets/common/error_message.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -47,6 +48,18 @@ class _LoginScreenState extends State<LoginScreen>
     _animationController.forward();
   }
 
+  Future<void> _showToastAsync(String message, {Color? backgroundColor}) async {
+    Fluttertoast.showToast(
+      msg: message,
+      toastLength: Toast.LENGTH_LONG,
+      gravity: ToastGravity.BOTTOM,
+      backgroundColor: backgroundColor ?? Colors.red,
+      textColor: Colors.white,
+      fontSize: 14.0,
+    );
+    await Future.delayed(const Duration(seconds: 10)); // Optional wait
+  }
+
   @override
   void dispose() {
     _animationController.dispose();
@@ -58,20 +71,50 @@ class _LoginScreenState extends State<LoginScreen>
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
     if (!mounted) return;
-    setState(() {
-      _errorMessage = '';
-    });
+
+    setState(() => _errorMessage = '');
+    final authService = Provider.of<AuthService>(context, listen: false);
 
     try {
-      await Provider.of<AuthService>(
-        context,
-        listen: false,
-      ).login(_usernameController.text, _passwordController.text);
-    } catch (e) {
+      await authService.login(
+        _usernameController.text,
+        _passwordController.text,
+      );
+
       if (!mounted) return;
-      setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
-      });
+
+      final user = authService.user;
+
+      if (user?.isVerified == false) {
+        Navigator.of(
+          context,
+        ).pushNamed(Routes.verifyEmail, arguments: user?.email);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Please verify your email to continue."),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      } else if (user?.isVerified == true) {
+        Navigator.of(context).pushReplacementNamed(Routes.main);
+      } else {
+        _showToastAsync("Login failed. Please try again.");
+      }
+    } catch (e) {
+      final message = e.toString().replaceFirst('Exception: ', '');
+      debugPrint('❌ [AUTH] Login error: $message');
+
+      if (!mounted) return;
+
+      setState(() => _errorMessage = message);
+
+      if (message.toLowerCase().contains('email not verified')) {
+        Navigator.of(
+          context,
+        ).pushNamed(Routes.verifyEmail, arguments: authService.user?.email);
+      }
+
+      _showToastAsync(message);
     }
   }
 
@@ -140,6 +183,7 @@ class _LoginScreenState extends State<LoginScreen>
                   ErrorMessage(message: _errorMessage),
                   const SizedBox(height: 16),
                 ],
+
                 _buildLoginButton(authService),
                 const SizedBox(height: 16),
                 _buildFooter(),
