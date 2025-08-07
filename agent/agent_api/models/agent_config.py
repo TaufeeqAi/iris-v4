@@ -1,6 +1,7 @@
-from typing import Optional, Dict, List, Any,Union
+from typing import Optional, Dict, List, Any, Union
 from pydantic import BaseModel, Field
 import uuid
+from datetime import datetime # Import datetime for the new fields
 
 # Pydantic model for a Tool, mirroring the SQLAlchemy model
 class Tool(BaseModel):
@@ -60,6 +61,10 @@ class AgentConfig(BaseModel):
     lore: Optional[List[str]] = Field(None, description="Lore and background information as a list.")
     knowledge: Optional[List[str]] = Field(None, description="Specific knowledge points as a list.")
     
+    # New fields for agent usage statistics
+    lastUsed: Optional[datetime] = Field(None, description="Timestamp of when the agent was last used.")
+    totalSessions: Optional[int] = Field(0, description="Total number of chat sessions initiated with this agent.")
+
     # New field to represent the agent's tools
     tools: Optional[List[AgentTool]] = Field(None, description="A list of tools associated with this agent, and their enabled status.")
     
@@ -71,4 +76,4 @@ class AgentConfig(BaseModel):
 
     class Config:
         populate_by_name = True
-        extra = "forbid"
+        extra = "forbid" # Keep as forbid for strict validation

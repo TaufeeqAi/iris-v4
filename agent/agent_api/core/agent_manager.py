@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CHARACTER_CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "default.character.json")
 
+# A system-level UUID to use for default agents, ensuring they have an owner.
+SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
+
 
 def _load_default_agent_config_from_file() -> Optional[AgentConfig]:
     """
@@ -40,7 +43,7 @@ def _load_default_agent_config_from_file() -> Optional[AgentConfig]:
             with open(DEFAULT_CHARACTER_CONFIG_PATH, 'r', encoding='latin-1') as f:
                 config_data = json.load(f)
 
-        if config_data is None:
+        if config_data == None:
             logger.error(f"Could not load data from {DEFAULT_CHARACTER_CONFIG_PATH} with utf-8 or latin-1 encoding.")
             return None
 
@@ -66,6 +69,7 @@ def _load_default_agent_config_from_file() -> Optional[AgentConfig]:
         # Create AgentConfig instance
         default_agent_config = AgentConfig(
             id=str(uuid.uuid4()),
+            user_id=SYSTEM_USER_ID, 
             name=config_data.get("name", "DefaultBot"),
             modelProvider=config_data.get("modelProvider", "groq"),
             settings=settings_instance,
@@ -238,23 +242,8 @@ class AgentManager:
             default_agent_config = _load_default_agent_config_from_file()
 
             if default_agent_config:
-                # --- FIX START ---
-                # Check if the default agent config has any tools and add a default if not.
-                if not default_agent_config.tools:
-                    logger.info("Default agent config has no tools. Adding 'google_search' as a default.")
-                    google_search_tool_id = str(uuid.uuid4())
-                    google_search_tool = AgentTool(
-                        tool_id=google_search_tool_id,
-                        is_enabled=True,
-                        tool_details=Tool(
-                            id=google_search_tool_id,
-                            name="google_search",
-                            description="A tool for performing a google search.",
-                            config={"parameters": {"query": {"type": "string", "description": "The search query."}}}
-                        )
-                    )
-                    default_agent_config.tools = [google_search_tool]
-                # --- FIX END ---
+                # Removed the default_agent_config.tools injection block.
+                # Tools will now always be populated from MCP servers.
                 await self.db_manager.save_agent_config(default_agent_config)
                 logger.info(f"Default agent '{default_agent_config.name}' saved to DB with ID: {default_agent_config.id}.")
                 existing_configs = await self.db_manager.get_all_agent_configs()
@@ -269,8 +258,25 @@ class AgentManager:
                     logger.warning(f"Agent config for '{config.name}' has no ID. Generated new ID: {config.id}")
                     await self.db_manager.update_agent_config(config)
 
-                executor, mcp_client, discord_bot_id, telegram_bot_id = \
+                executor, mcp_client, discord_bot_id, telegram_bot_id, fetched_tools_for_db_update = \
                     await self.create_dynamic_agent_instance(config, local_mode)
+
+                # Update the agent_config's tools list with the fetched tools' details
+                # before saving it back to the database. This applies to ALL agents.
+                config.tools = [] # Clear existing tools to prevent duplicates if re-initializing
+                for tool_item in fetched_tools_for_db_update:
+                    # Create a minimal Tool object for storage, just enough for frontend display
+                    tool_details = Tool(
+                        id=str(uuid.uuid4()), # Generate a new ID for the association
+                        name=tool_item.name,
+                        description=tool_item.description,
+                        # config=tool_item.args_schema.schema() if hasattr(tool_item.args_schema, 'schema') else {} # Optional: store schema
+                    )
+                    config.tools.append(AgentTool(tool_id=tool_details.id, is_enabled=True, tool_details=tool_details))
+                
+                # Save the updated agent config back to the database
+                await self.db_manager.update_agent_config(config)
+                logger.info(f"Agent '{config.name}' (ID: {config.id}) tool associations updated in DB.")
 
                 self.add_initialized_agent(
                     config.id,
@@ -285,7 +291,7 @@ class AgentManager:
 
         logger.info(f"Finished initializing {len(self._initialized_agents)} agent(s).")
 
-    async def create_dynamic_agent_instance(self, agent_config: AgentConfig, local_mode: bool) -> Tuple[Any, MultiServerMCPClient, Optional[str], Optional[str]]:
+    async def create_dynamic_agent_instance(self, agent_config: AgentConfig, local_mode: bool) -> Tuple[Any, MultiServerMCPClient, Optional[str], Optional[str], List[BaseTool]]:
         """
         Dynamically creates and initializes an agent instance based on AgentConfig.
         Returns the compiled agent executor (LangGraph runnable), its associated MCPClient,
@@ -497,4 +503,5 @@ class AgentManager:
 
         logger.info(f"🧠 Agent: {agent_name} (ID: {agent_id}) initialized as a custom LangGraph agent with {len(agent_tools_final)} tools.")
 
-        return agent_executor, mcp_client, discord_bot_id, telegram_bot_id
+        # Return the fetched_tools_final as well, so initialize_all_agents_from_db can use it
+        return agent_executor, mcp_client, discord_bot_id, telegram_bot_id, agent_tools_final

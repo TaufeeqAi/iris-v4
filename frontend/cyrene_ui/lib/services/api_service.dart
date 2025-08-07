@@ -1,9 +1,12 @@
+// services/api_service.dart
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter/foundation.dart'; // For debugPrint
+
 import '../config/app_config.dart';
 import '../models/agent_config.dart';
-import '../models/chat_message.dart';
-import '../models/tool_model.dart';
+import '../models/chat_message.dart'; // Ensure ChatMessage is updated
+import '../models/tool_model.dart'; // Assuming Tool and AgentTool are defined here
 
 class ApiService {
   final String token;
@@ -17,15 +20,17 @@ class ApiService {
 
   Future<List<AgentConfig>> getAgents() async {
     try {
-      print('🔍 [ApiService] Fetching agents...');
-      print('➡️ Request headers: $_headers');
-      print('➡️ URL: ${AppConfig.fastApiBotUrl}/agents/list');
+      debugPrint('🔍 [ApiService] Fetching agents...');
+      debugPrint('➡️ Request headers: $_headers');
+      debugPrint('➡️ URL: ${AppConfig.fastApiBotUrl}/agents/list');
       final response = await http.get(
         Uri.parse('${AppConfig.fastApiBotUrl}/agents/list'),
         headers: _headers,
       );
-      print('⬅️ Response status: ${response.statusCode}');
-      print('⬅️ Response body: ${response.body}');
+      debugPrint('⬅️ Response status: ${response.statusCode}');
+      debugPrint(
+        '⬅️ Response body: ${response.body.length > 50 ? response.body.substring(0, 50) + '...' : response.body}',
+      );
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
@@ -95,6 +100,7 @@ class ApiService {
     }
   }
 
+  // This method is likely deprecated if you're using ChatService for streaming
   Future<String> chatWithAgent(String agentId, String message) async {
     try {
       final response = await http.post(
@@ -125,37 +131,74 @@ class ApiService {
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         return data.map((json) {
+          // Determine MessageType based on 'type' or 'role' from backend
+          // Assuming backend 'type' or 'role' directly maps to 'user' or 'assistant'/'agent'
+          final String roleString =
+              json['role'] as String? ??
+              'system'; // Use 'role' if available, fallback to 'type'
+          MessageType messageType;
+          switch (roleString) {
+            case 'user':
+              messageType = MessageType.user;
+              break;
+            case 'assistant': // Backend might use 'assistant' for agent responses
+              messageType = MessageType.agent;
+              break;
+            case 'system':
+              messageType = MessageType.system;
+              break;
+            default:
+              messageType = MessageType.system;
+          }
+
           return ChatMessage(
-            id: json['id'],
-            content: json['content'],
-            type: json['type'] == 'user' ? MessageType.user : MessageType.agent,
-            timestamp: DateTime.parse(json['timestamp']),
+            id: json['id'] as String,
+            sessionId:
+                json['session_id'] as String? ??
+                '', // Provide session_id, assuming it's available
+            role: roleString, // Pass the role string from backend
+            content: json['content'] as String,
+            type: messageType, // Use the derived MessageType
+            timestamp: DateTime.parse(json['timestamp'] as String),
+            isPartial:
+                json['is_partial'] as bool? ?? false, // Ensure this is parsed
           );
         }).toList();
       } else {
         return [];
       }
     } catch (e) {
+      debugPrint(
+        'Error fetching chat history in ApiService: $e',
+      ); // Changed to debugPrint
       return [];
     }
   }
 
   Future<AgentConfig> getAgentById(String agentId) async {
     try {
-      print('🔍 [ApiService] Fetching a single agent by ID: $agentId...');
-      print('➡️ Request headers: $_headers');
-      print('➡️ URL: ${AppConfig.fastApiBotUrl}/agents/$agentId');
+      debugPrint(
+        '🔍 [ApiService] Fetching a single agent by ID: $agentId...',
+      ); // Changed to debugPrint
+      debugPrint('➡️ Request headers: $_headers'); // Changed to debugPrint
+      debugPrint(
+        '➡️ URL: ${AppConfig.fastApiBotUrl}/agents/$agentId',
+      ); // Changed to debugPrint
       final response = await http.get(
         Uri.parse('${AppConfig.fastApiBotUrl}/agents/$agentId'),
         headers: _headers,
       );
-      print('⬅️ Response status: ${response.statusCode}');
-      print('⬅️ Response body: ${response.body}');
+      debugPrint(
+        '⬅️ Response status: ${response.statusCode}',
+      ); // Changed to debugPrint
+      debugPrint('⬅️ Response body: ${response.body}'); // Changed to debugPrint
 
       if (response.statusCode == 200) {
-        final current_agent = jsonDecode(response.body);
-        print('Agent Name: ${current_agent['name']} pulled by its Id');
-        return AgentConfig.fromJson(current_agent);
+        final currentAgent = jsonDecode(response.body); // FIX: Renamed variable
+        debugPrint(
+          'Agent Name: ${currentAgent['name']} pulled by its Id',
+        ); // Changed to debugPrint
+        return AgentConfig.fromJson(currentAgent);
       } else {
         throw Exception('Failed to load agents: ${response.body}');
       }

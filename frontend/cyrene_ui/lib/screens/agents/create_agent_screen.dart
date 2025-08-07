@@ -44,75 +44,151 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
     "OpenAI",
     "Google",
   ];
+
   final Map<String, List<String>> _providerModels = {
     'openai': [
       'gpt-3.5-turbo',
-      'gpt-3.5-turbo-16k',
       'gpt-4',
-      'gpt-4-32k',
-      'gpt-4-turbo',
+      'gpt-4-32k', // Older, but still might be in use
+      'gpt-4-turbo', // Alias for latest turbo model
+      'gpt-4o',
+      'gpt-4o-mini',
       'gpt-4.1',
+      'gpt-4.1-mini',
+      'gpt-4.1-nano',
     ],
     'anthropic': [
-      'Claude 3 Haiku',
-      'Claude 3 Sonnet',
-      'Claude 3 Opus',
-      'claude-4-opus',
-      'claude-4-sonnet',
+      'claude-3-haiku-20240307',
+      'claude-3-sonnet-20240229',
+      'claude-3-opus-20240229',
+      'claude-3-5-sonnet-20240620',
+      'claude-3-7-sonnet-20250219', // Updated to include full date
+      'claude-sonnet-4-20250514',
+      'claude-opus-4-20250514',
+      'claude-opus-4-1-20250805', // Latest Opus 4.1
+      'claude-3-5-haiku-20241022', // Added 3.5 Haiku
     ],
     'groq': [
-      'moonshotai/kimi-k2-instruct',
+      'llama3-8b-8192',
+      'llama3-70b-8192',
+      'llama-3.1-8b-instant',
+      'llama-3.3-70b-versatile',
+      'gemma2-9b-it',
       'meta-llama/llama-4-scout-17b-16e-instruct',
       'meta-llama/llama-4-maverick-17b-128e-instruct',
-      'meta-llama/llama-guard-4-12b-instruct',
-      'gemma-2-9b-it', // Google model on GroqCloud
+      'meta-llama/llama-guard-4-12b',
+      'moonshotai/kimi-k2-instruct',
+      'qwen/qwen3-32b',
+      'deepseek-r1-distill-llama-70b',
+      'gpt-oss-20B', // OpenAI open models on Groq
+      'gpt-oss-120B', // OpenAI open models on Groq
     ],
-    'google': ['gemini-1.5-pro', 'gemini-2.5-flash', 'gemini-2.5-pro'],
+    'google': [
+      'gemini-1.5-pro',
+      'gemini-2.5-flash',
+      'gemini-2.5-pro',
+      'gemini-2.5-flash-lite',
+      'gemini-live-2.5-flash-preview',
+      'gemini-2.5-flash-preview-native-audio-dialog',
+      // 'gemma-2-9b-it' is also a Google model, but often listed under Groq for GroqCloud
+    ],
   };
 
   final Map<String, int> _modelMaxTokenLimits = {
-    'gpt-3.5-turbo': 4096,
-    'gpt-3.5-turbo-16k': 16384,
+    // OpenAI Models (These are typically context window limits, not just output)
+    'gpt-3.5-turbo': 16385,
     'gpt-4': 8192,
     'gpt-4-32k': 32768,
-    'gpt-4-turbo': 131072, // Turbo supports 128K
-    'gpt-4.1': 1000000, // GPT-4.1 supports ~1M tokens
+    'gpt-4-turbo': 128000,
+    'gpt-4o': 128000,
+    'gpt-4o-mini': 128000,
+    'gpt-4.1': 1000000, // 1M tokens context
+    'gpt-4.1-mini': 1000000,
+    'gpt-4.1-nano': 1000000,
 
-    'Claude 3 Haiku': 200000,
-    'Claude 3 Sonnet': 200000,
-    'Claude 3 Opus': 200000,
-    'claude-4-opus': 200000,
-    'claude-4-sonnet': 200000,
+    // Anthropic Models (These are context window limits, consistently 200K for Claude 3/4)
+    'claude-3-haiku-20240307': 200000,
+    'claude-3-sonnet-20240229': 200000,
+    'claude-3-opus-20240229': 200000,
+    'claude-3-5-sonnet-20240620': 200000,
+    'claude-3-7-sonnet-20250219': 200000,
+    'claude-sonnet-4-20250514': 200000,
+    'claude-opus-4-20250514': 200000,
+    'claude-opus-4-1-20250805': 200000,
+    'claude-3-5-haiku-20241022': 200000,
+
+    // Groq Models (These are context window limits)
+    'llama3-8b-8192': 8192,
+    'llama3-70b-8192': 8192,
+    'llama-3.1-8b-instant': 128000,
+    'llama-3.3-70b-versatile': 128000,
+    'gemma2-9b-it': 8192,
+    'meta-llama/llama-4-scout-17b-16e-instruct': 128000,
+    'meta-llama/llama-4-maverick-17b-128e-instruct': 128000,
+    'meta-llama/llama-guard-4-12b': 128000,
     'moonshotai/kimi-k2-instruct': 131072,
-    'meta-llama/llama-4-scout-17b-16e-instruct': 131072,
-    'meta-llama/llama-4-maverick-17b-128e-instruct': 131072, // preview capacity
-    'meta-llama/llama-guard-4-12b-instruct': 131072,
-    'gemma-2-9b-it': 8192,
+    'qwen/qwen3-32b': 131072,
+    'deepseek-r1-distill-llama-70b': 128000,
+    'gpt-oss-20B': 128000,
+    'gpt-oss-120B': 128000,
 
-    'gemini-1.5-pro': 1048576,
-    'gemini-2.5-flash': 1048576,
-    'gemini-2.5-pro': 1048576,
+    // Google Models (These are context window limits)
+    'gemini-1.5-pro': 1048576, // 1M tokens
+    'gemini-2.5-flash': 1048576, // 1M tokens
+    'gemini-2.5-pro': 1048576, // 1M tokens
+    'gemini-2.5-flash-lite': 1048576,
+    'gemini-live-2.5-flash-preview': 1048576,
+    'gemini-2.5-flash-preview-native-audio-dialog': 128000,
   };
 
   final Map<String, int> _modelMaxOutputLimits = {
+    // OpenAI Models
     'gpt-3.5-turbo': 4096,
-    'gpt-3.5-turbo-16k': 16384,
-    'gpt-4': 8192,
-    'gpt-4-32k': 32768,
-    'gpt-4-turbo': 131072,
-    'gpt-4.1': 1000000,
+    'gpt-4': 4096,
+    'gpt-4-32k': 4096,
+    'gpt-4-turbo':
+        4096, // Default, can be higher up to context window minus prompt
+    'gpt-4o': 4096, // Default, can be higher up to context window minus prompt
+    'gpt-4o-mini': 4096, // Default
+    'gpt-4.1': 32768,
+    'gpt-4.1-mini': 32768,
+    'gpt-4.1-nano': 32768,
 
-    'claude-4-opus': 32768,
-    'claude-4-sonnet': 65536,
+    // Anthropic Models
+    'claude-3-haiku-20240307': 4096,
+    'claude-3-sonnet-20240229':
+        8192, // Common default, though some tiers can be higher
+    'claude-3-opus-20240229':
+        8192, // Common default, though some tiers can be higher
+    'claude-3-5-sonnet-20240620': 16000,
+    'claude-3-7-sonnet-20250219': 128000,
+    'claude-sonnet-4-20250514': 64000,
+    'claude-opus-4-20250514': 32000,
+    'claude-opus-4-1-20250805': 32000,
+    'claude-3-5-haiku-20241022': 8192,
 
+    // Groq Models (often full context for output unless specified)
+    'llama3-8b-8192': 8192,
+    'llama3-70b-8192': 8192,
+    'llama-3.1-8b-instant': 128000,
+    'llama-3.3-70b-versatile': 128000,
+    'gemma2-9b-it': 8192,
     'meta-llama/llama-4-scout-17b-16e-instruct': 8192,
     'meta-llama/llama-4-maverick-17b-128e-instruct': 8192,
-    'meta-llama/llama-guard-4-12b-instruct': 131072,
-    'gemma-2-9b-it': 8192,
+    'meta-llama/llama-guard-4-12b': 128000,
+    'moonshotai/kimi-k2-instruct': 131072,
+    'qwen/qwen3-32b': 131072,
+    'deepseek-r1-distill-llama-70b': 128000,
+    'gpt-oss-20B': 128000,
+    'gpt-oss-120B': 128000,
 
-    'gemini-1.5-pro': 8192,
-    'gemini-2.5-flash': 65535,
+    // Google Models
+    'gemini-1.5-pro': 65536,
+    'gemini-2.5-flash': 65536,
     'gemini-2.5-pro': 65535,
+    'gemini-2.5-flash-lite': 65536,
+    'gemini-live-2.5-flash-preview': 8192,
+    'gemini-2.5-flash-preview-native-audio-dialog': 8000,
   };
 
   @override

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
-from routers import chat_stream, notifications
+from agent.ws_api.routers import chat_stream, notifications
 from fastapi.middleware.cors import CORSMiddleware
-from ws_api.routers import voice_chat
+from agent.ws_api.routers import voice_chat
 
 app = FastAPI(title="Cyrene WebSocket API")
 

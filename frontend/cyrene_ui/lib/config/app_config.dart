@@ -7,7 +7,7 @@ class AppConfig {
   // API Configuration
   static const String fastApiAuthUrl = "http://localhost:8001";
   static const String fastApiBotUrl = "http://localhost:8000";
-
+  static const String fastApiWsUrl = "ws://localhost:8002";
   // Storage Keys
   static const String authTokenKey = 'auth_token';
   static const String userPrefsKey = 'user_preferences';

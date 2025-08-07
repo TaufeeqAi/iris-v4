@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'config/app_config.dart';
 import 'config/theme_config.dart';
 import 'services/auth_service.dart';
+import 'services/chat_service.dart'; // NEW: Import ChatService
 import 'screens/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_screen.dart';
@@ -25,8 +26,17 @@ class CyreneApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthService()),
-        ChangeNotifierProvider(create: (_) => AuthService()),
+        ChangeNotifierProvider(
+          create: (_) => AuthService(), // Provide AuthService once
+        ),
+        // Provide ChatService, which depends on AuthService
+        ChangeNotifierProvider(
+          create: (context) {
+            final authService = context.read<AuthService>();
+            return ChatService(authService.token ?? '');
+          },
+        ),
+        // Add any other top-level providers here
       ],
       child: MaterialApp(
         title: AppConfig.appName,
@@ -34,11 +44,11 @@ class CyreneApp extends StatelessWidget {
         darkTheme: ThemeConfig.darkTheme,
         themeMode: ThemeMode.system,
         debugShowCheckedModeBanner: false,
-        initialRoute: '/',
+        // Set home directly to AppInitializer to handle auth state
+        home: const AppInitializer(),
         onGenerateRoute: (settings) {
+          // Keep onGenerateRoute for named routes beyond initial auth check
           switch (settings.name) {
-            case '/':
-              return MaterialPageRoute(builder: (_) => const AppInitializer());
             case Routes.login:
               return MaterialPageRoute(builder: (_) => const LoginScreen());
             case Routes.main:
@@ -67,6 +77,7 @@ class CyreneApp extends StatelessWidget {
                 builder: (_) => VerifyEmailScreen(email: email),
               );
             default:
+              // Fallback for any unhandled routes
               return MaterialPageRoute(
                 builder: (_) =>
                     const Scaffold(body: Center(child: Text('Page not found'))),
@@ -83,6 +94,7 @@ class AppInitializer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // This Consumer correctly watches AuthService for changes
     return Consumer<AuthService>(
       builder: (context, auth, child) {
         if (auth.isLoading) {

@@ -1,14 +1,17 @@
 import 'package:cyrene_ui/screens/profile/profile_screen.dart';
 import 'package:cyrene_ui/services/api_service.dart';
+import 'package:cyrene_ui/services/chat_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../config/app_config.dart';
+import '../models/chat_session.dart';
 import 'agents/agent_list_screen.dart';
 import 'agents/create_agent_screen.dart';
 import 'chat/chat_screen.dart';
 import 'dashboard/dashboard_screen.dart';
 import '../widgets/common/custom_drawer.dart';
+import 'package:cyrene_ui/widgets/chat/chat_history_sidebar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings/settings_screen.dart';
 
@@ -23,7 +26,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   int _selectedIndex = 0;
   String? _selectedAgentId;
   String? _selectedAgentName;
+  String? _currentSessionId;
   late TabController _tabController;
+  bool _isChatHistorySidebarExpanded = false;
+  List<ChatSession> _chatSessions = [];
 
   final List<NavigationItem> _navigationItems = [
     NavigationItem(
@@ -47,17 +53,32 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       label: 'Chat',
     ),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastTabIndex();
+    _tabController = TabController(
+      length: _navigationItems.length,
+      vsync: this,
+    );
+    _initializeDefaultAgent();
+    _loadChatSessions();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   Future<void> _initializeDefaultAgent() async {
     final authService = Provider.of<AuthService>(context, listen: false);
     final apiService = ApiService(authService.token!);
     final agents = await apiService.getAgents();
 
-    if (agents.isEmpty) {
-      // No agents at all — nothing to select
-      return;
-    }
+    if (agents.isEmpty) return;
 
-    // Pick “Cyrene” if it exists, otherwise just the first one
     final defaultAgent = agents.firstWhere(
       (a) => a.name.toLowerCase() == 'cyrene',
       orElse: () => agents.first,
@@ -69,6 +90,20 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     });
   }
 
+  Future<void> _loadChatSessions() async {
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final apiService = ChatService(authService.token!);
+      final sessions = await apiService.getAllChatSessions();
+
+      setState(() {
+        _chatSessions = sessions;
+      });
+    } catch (e) {
+      debugPrint('Error loading chat sessions: $e');
+    }
+  }
+
   void _loadLastTabIndex() async {
     final prefs = await SharedPreferences.getInstance();
     final savedIndex = prefs.getInt('last_tab_index') ?? 0;
@@ -78,30 +113,21 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     });
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _loadLastTabIndex();
-    _loadLastTabIndex();
-
-    _tabController = TabController(
-      length: _navigationItems.length,
-      vsync: this,
-    );
-    _initializeDefaultAgent();
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
   void _onAgentSelected(String agentId, String agentName) {
     setState(() {
       _selectedAgentId = agentId;
       _selectedAgentName = agentName;
-      _selectedIndex = 3; // Switch to chat tab
+      _selectedIndex = 3;
+      _tabController.animateTo(3);
+      _currentSessionId = null; // Start new session
+    });
+  }
+
+  void _onChatSessionSelected(ChatSession session) {
+    setState(() {
+      _selectedAgentId = session.agentId;
+      _currentSessionId = session.id;
+      _selectedIndex = 3;
       _tabController.animateTo(3);
     });
   }
@@ -118,6 +144,19 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     setState(() {
       _selectedIndex = index;
       _tabController.animateTo(index);
+    });
+
+    // Auto-expand sidebar when navigating to chat on desktop
+    if (index == 3 && MediaQuery.of(context).size.width > 800) {
+      setState(() {
+        _isChatHistorySidebarExpanded = true;
+      });
+    }
+  }
+
+  void _toggleChatHistorySidebar() {
+    setState(() {
+      _isChatHistorySidebarExpanded = !_isChatHistorySidebarExpanded;
     });
   }
 
@@ -141,11 +180,28 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width > 800;
+    final isMobile = MediaQuery.of(context).size.width <= 600;
+
     return Scaffold(
       body: Row(
         children: [
           // Navigation Rail for larger screens
-          if (MediaQuery.of(context).size.width > 800) _buildNavigationRail(),
+          if (isDesktop) _buildNavigationRail(),
+
+          // Chat History Sidebar (Desktop only, when in chat)
+          if (isDesktop && _selectedIndex == 3 && _isChatHistorySidebarExpanded)
+            ChatHistorySidebar(
+              chatSessions: _chatSessions,
+              currentSessionId: _currentSessionId,
+              onSessionSelected: _onChatSessionSelected,
+              onNewChat: () {
+                setState(() {
+                  _currentSessionId = null;
+                });
+              },
+              onClose: _toggleChatHistorySidebar,
+            ),
 
           // Main content
           Expanded(
@@ -163,6 +219,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                       ChatScreen(
                         agentId: _selectedAgentId,
                         agentName: _selectedAgentName,
+                        sessionId: _currentSessionId,
                         showAllHistory: true,
                       ),
                     ],
@@ -175,22 +232,26 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       ),
 
       // Bottom Navigation for smaller screens
-      bottomNavigationBar: MediaQuery.of(context).size.width <= 800
-          ? _buildBottomNavigationBar()
-          : null,
+      bottomNavigationBar: !isDesktop ? _buildBottomNavigationBar() : null,
 
-      // Drawer for mobile
-      drawer: MediaQuery.of(context).size.width <= 600
+      // Drawer for mobile (with chat history)
+      drawer: isMobile
           ? CustomDrawer(
               selectedIndex: _selectedIndex,
               onItemSelected: _onNavigationTapped,
               selectedAgentName: _selectedAgentName,
+              // chatSessions: _chatSessions,
+              // currentSessionId: _currentSessionId,
+              // onSessionSelected: _onChatSessionSelected,
             )
           : null,
     );
   }
 
   Widget _buildAppBar() {
+    final isDesktop = MediaQuery.of(context).size.width > 800;
+    final isMobile = MediaQuery.of(context).size.width <= 600;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -203,12 +264,25 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       ),
       child: Row(
         children: [
-          if (MediaQuery.of(context).size.width <= 600)
+          // Menu button for mobile
+          if (isMobile)
             Builder(
               builder: (context) => IconButton(
                 icon: const Icon(Icons.menu),
                 onPressed: () => Scaffold.of(context).openDrawer(),
               ),
+            ),
+
+          // Chat history toggle for desktop (only in chat view)
+          if (isDesktop && _selectedIndex == 3)
+            IconButton(
+              icon: Icon(
+                _isChatHistorySidebarExpanded ? Icons.menu_open : Icons.menu,
+              ),
+              onPressed: _toggleChatHistorySidebar,
+              tooltip: _isChatHistorySidebarExpanded
+                  ? 'Hide chat history'
+                  : 'Show chat history',
             ),
 
           Text(
@@ -218,6 +292,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
           ),
 
+          // Current agent indicator
           if (_selectedIndex == 3 && _selectedAgentName != null)
             Container(
               margin: const EdgeInsets.only(left: 8),
@@ -247,7 +322,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   Widget _buildNavigationRail() {
     return Container(
-      width: 80,
+      width: _isChatHistorySidebarExpanded && _selectedIndex == 3 ? 72 : 80,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border(
@@ -259,7 +334,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       child: NavigationRail(
         selectedIndex: _selectedIndex,
         onDestinationSelected: _onNavigationTapped,
-        labelType: NavigationRailLabelType.selected,
+        labelType: _isChatHistorySidebarExpanded && _selectedIndex == 3
+            ? NavigationRailLabelType.none
+            : NavigationRailLabelType.selected,
         destinations: _navigationItems
             .map(
               (item) => NavigationRailDestination(

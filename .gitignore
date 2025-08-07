@@ -4,7 +4,7 @@ k8s/secrets.yaml
 
 .root_venv/
 
-agent/agent-api/default.character.json
+agent/agent_api/default.character.json/
 
 # Python
 ##########

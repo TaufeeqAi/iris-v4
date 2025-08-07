@@ -145,7 +145,7 @@ async def authenticate_user(db: AsyncSession, username: str, password: str) -> U
     return user
 
 
-async def send_verification_email(email: str):
+async def send_verification_email(db: AsyncSession, user: User):
     user = await get_user_by_username(db, username)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

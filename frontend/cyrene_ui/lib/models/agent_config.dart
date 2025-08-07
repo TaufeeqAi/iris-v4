@@ -5,6 +5,8 @@ import 'package:cyrene_ui/models/tool_model.dart';
 class AgentConfig {
   final String? id;
   final String name;
+  final String? userId;
+  final bool isActive;
   final String modelProvider;
   final String? system;
   final List<String>? bio;
@@ -16,9 +18,17 @@ class AgentConfig {
   final DateTime? createdAt;
   final DateTime? updatedAt;
   List<AgentTool>? tools;
+  final String? avatarUrl;
+  final int totalSessions;
+  final DateTime? lastUsed;
 
   AgentConfig({
     this.id,
+    this.isActive = true,
+    this.avatarUrl,
+    this.totalSessions = 0,
+    this.lastUsed,
+    this.userId,
     required this.name,
     required this.modelProvider,
     this.system,
@@ -37,6 +47,13 @@ class AgentConfig {
   factory AgentConfig.fromJson(Map<String, dynamic> json) {
     return AgentConfig(
       id: json['id'],
+      userId: json['user_id'],
+      isActive: json['is_active'] ?? true,
+      avatarUrl: json['avatar_url'],
+      totalSessions: json['total_sessions'] ?? 0,
+      lastUsed: json['last_used'] != null
+          ? DateTime.parse(json['last_used'])
+          : null,
       name: json['name'],
       modelProvider: json['modelProvider'],
       system: json['system'],
@@ -72,6 +89,11 @@ class AgentConfig {
     return {
       'id': id,
       'name': name,
+      'user_id': userId,
+      'is_active': isActive,
+      'avatar_url': avatarUrl,
+      'total_sessions': totalSessions,
+      'last_used': lastUsed?.toIso8601String(),
       'modelProvider': modelProvider,
       'system': system,
       'bio': bio,
@@ -100,10 +122,20 @@ class AgentConfig {
     Map<String, dynamic>? settings,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? userId,
+    bool? isActive,
+    String? avatarUrl,
+    int? totalSessions,
+    dynamic lastUsed,
   }) {
     return AgentConfig(
       id: id ?? this.id,
       name: name ?? this.name,
+      userId: userId ?? this.userId,
+      isActive: isActive ?? this.isActive,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      totalSessions: totalSessions!,
+      lastUsed: lastUsed?.toIso8601String() ?? this.lastUsed,
       modelProvider: modelProvider ?? this.modelProvider,
       system: system ?? this.system,
       bio: bio ?? this.bio,

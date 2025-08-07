@@ -1,11 +1,11 @@
 import logging
 import json
 import re
-from typing import List, Any, TypedDict, Annotated, Dict
+from typing import List, Any, TypedDict, Annotated, Dict, Union
 
 from langchain_groq import ChatGroq
 from langchain.tools import BaseTool
-from langchain_core.messages import  AIMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, END
 
 logger = logging.getLogger(__name__)
@@ -106,13 +106,43 @@ async def create_custom_tool_agent(llm: ChatGroq, tools: List[BaseTool], system_
         logger.debug(f"[{agent_name}] LLM Response (raw): {response}")
 
         # Post-process the AI message content to remove unwanted tags
-        if isinstance(response, AIMessage) and response.content:
-            cleaned_content = TOOL_USE_TAG_REGEX.sub('', response.content).strip()
-            # If the content becomes empty after cleaning, ensure it's not entirely blank
+        if isinstance(response, AIMessage):
+            original_content: Union[str, List[Dict[str, Any]]] = response.content # Type hint for clarity
+
+            extracted_text_content = ""
+            if isinstance(original_content, list):
+                logger.debug(f"[{agent_name}] AIMessage content is a list. Extracting text blocks.")
+                for item in original_content:
+                    if isinstance(item, dict) and item.get("type") == "text" and "text" in item:
+                        extracted_text_content += item["text"]
+            elif isinstance(original_content, str):
+                extracted_text_content = original_content
+            elif original_content is None:
+                extracted_text_content = "" # Handle None content gracefully
+            else:
+                logger.warning(f"[{agent_name}] Unexpected type for AIMessage content: {type(original_content)}. Treating as empty string.")
+                extracted_text_content = ""
+
+            logger.debug(f"[{agent_name}] Extracted text content from AIMessage: '{extracted_text_content}'")
+
+            cleaned_content = TOOL_USE_TAG_REGEX.sub('', extracted_text_content).strip()
+            logger.debug(f"[{agent_name}] Content after regex cleaning: '{cleaned_content}'")
+
+            # FIX: If content is empty but tool calls exist, provide a placeholder message.
             if not cleaned_content and response.tool_calls:
-                pass 
-            response.content = cleaned_content
-            logger.debug(f"[{agent_name}] LLM Response (cleaned): {response}")
+                tool_names = [tc['name'] for tc in response.tool_calls if 'name' in tc]
+                placeholder_message = f"Initiating tool call(s) for {', '.join(tool_names) if tool_names else 'a tool'}..."
+                response.content = placeholder_message
+                logger.info(f"[{agent_name}] LLM Response content was empty, but tool calls detected. Setting placeholder: '{placeholder_message}'")
+            elif not cleaned_content and not response.tool_calls:
+                # If no content and no tool calls, it's genuinely empty.
+                logger.warning(f"[{agent_name}] LLM Response has no content and no tool calls after cleaning. Sending empty.")
+                response.content = "" # Ensure it's explicitly an empty string
+            else:
+                response.content = cleaned_content # Use the cleaned content if it's not empty
+                logger.debug(f"[{agent_name}] LLM Response content is not empty after cleaning. Using cleaned content.")
+
+            logger.debug(f"[{agent_name}] LLM Response (final content before return): '{response.content}'")
 
         return {"messages": [response]}
 
@@ -177,10 +207,10 @@ async def create_custom_tool_agent(llm: ChatGroq, tools: List[BaseTool], system_
         last_message = state['messages'][-1]
         # If the last message is an AI message with tool calls, then execute tools
         if isinstance(last_message, AIMessage) and last_message.tool_calls:
-            logger.debug(f"[{agent_name}] LLM requested tool calls: {last_message.tool_calls}. Transitioning to 'call_tool'.")
+            logger.debug(f"[{agent_name}] LLM requested tool calls: {last_message.tool_calls}. Transitioning to 'continue'.")
             return "continue"
         # Otherwise, the LLM has generated a final answer, so end the graph
-        logger.debug(f"[{agent_name}] LLM generated final answer: {last_message.content}. Transitioning to 'end'.")
+        logger.debug(f"[{agent_name}] LLM generated final answer: '{last_message.content}'. Transitioning to 'end'.")
         return "end"
 
     # Build the graph
@@ -207,4 +237,3 @@ async def create_custom_tool_agent(llm: ChatGroq, tools: List[BaseTool], system_
     agent_runnable = workflow.compile()
     logger.info(f"Custom LangGraph agent '{agent_name}' compiled successfully.")
     return agent_runnable
-

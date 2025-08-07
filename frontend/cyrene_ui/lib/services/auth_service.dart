@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:async';
 import '../config/app_config.dart';
-import '../models/user.dart';
+import '../models/user.dart'; // Assuming this model has an 'id' field
 import '../models/auth_response.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 
@@ -50,6 +50,14 @@ class AuthService with ChangeNotifier {
       '🔍 [AUTH] Getting user: ${_user != null ? _user!.username : "NULL"}',
     );
     return _user;
+  }
+
+  // NEW: Getter to expose the user's ID from the _user object
+  String? get userId {
+    debugPrint(
+      '🔍 [AUTH] Getting userId: ${_user != null ? _user!.id : "NULL"}',
+    );
+    return _user?.id;
   }
 
   bool get isLoading {
@@ -172,7 +180,7 @@ class AuthService with ChangeNotifier {
         _refreshToken = authResponse.refreshToken;
 
         debugPrint('🔄 [AUTH] New tokens received:');
-        debugPrint('   - Access Token: ${_accessToken?.substring(0, 20)}...');
+        debugPrint('   - Access Token: ${_accessToken?.substring(0, 50)}...');
         debugPrint('   - Refresh Token: ${_refreshToken?.substring(0, 20)}...');
 
         await _saveTokens();
@@ -347,7 +355,7 @@ class AuthService with ChangeNotifier {
         debugPrint('📦 [AUTH] Decoded Token Payload: $decoded');
 
         await _saveTokens();
-        await _getUserInfo();
+        await _getUserInfo(); // This will populate _user and thus userId
         _scheduleTokenRefresh();
 
         debugPrint('🔐 [AUTH] Login process completed successfully');
